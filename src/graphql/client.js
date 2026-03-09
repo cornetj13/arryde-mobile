@@ -19,13 +19,17 @@ import { secureStorage } from '../utils/secureStorage';
    CONFIG
    ============================================ */
 
-// TODO: Update these for production
+// Platform-aware dev URLs: web uses localhost, native uses 10.0.2.2 (Android emulator)
+import { Platform } from 'react-native';
+
+const DEV_HOST = Platform.OS === 'web' ? 'localhost' : '10.0.2.2';
+
 const API_URL = __DEV__
-  ? 'http://10.0.2.2:3001/graphql' // Android emulator → localhost
+  ? `http://${DEV_HOST}:3001/graphql`
   : 'https://arryde-api-production.up.railway.app/graphql';
 
 const WS_URL = __DEV__
-  ? 'ws://10.0.2.2:3001/graphql'
+  ? `ws://${DEV_HOST}:3001/graphql`
   : 'wss://arryde-api-production.up.railway.app/graphql';
 
 /* ============================================

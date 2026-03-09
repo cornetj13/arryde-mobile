@@ -1,8 +1,8 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { useAuthStore, useUserStore } from '../stores';
 import AuthStack from './AuthStack';
-import RiderTabs from './RiderTabs';
-import DriverTabs from './DriverTabs';
+import RiderNavigator from './RiderNavigator';
+import DriverNavigator from './DriverNavigator';
 
 const RootNavigator = () => {
   const isAuth = useAuthStore((state) => state.isAuth);
@@ -13,9 +13,9 @@ const RootNavigator = () => {
       {!isAuth ? (
         <AuthStack />
       ) : userType === 'driver' ? (
-        <DriverTabs />
+        <DriverNavigator />
       ) : (
-        <RiderTabs />
+        <RiderNavigator />
       )}
     </NavigationContainer>
   );

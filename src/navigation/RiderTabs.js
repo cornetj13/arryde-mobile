@@ -2,7 +2,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
-// Placeholder screens (will be built in Phase 2)
+// Rider tab screens
 import RiderHomeScreen from '../screens/rider/RiderHomeScreen';
 import FavoriteDriversScreen from '../screens/rider/FavoriteDriversScreen';
 import RiderHistoryScreen from '../screens/rider/RiderHistoryScreen';

@@ -1,23 +1,703 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { useMutation, useQuery, useSubscription } from '@apollo/client/react';
+import Toast from 'react-native-toast-message';
 import { colors } from '../../theme/colors';
+import { useAuthStore, useUserStore, useDriverStore, useRideStore } from '../../stores';
+import {
+  LOGOUT_DRIVER,
+  UPDATE_DRIVER_IS_ON_DUTY,
+  UPDATE_RIDE_STATUS,
+  UPDATE_DRIVER_NEXT_AVAILABLE_AT,
+} from '../../graphql/mutations';
+import { GET_ACTIVE_RIDES, GET_ACCEPTED_RIDES, GET_SINGLE_DRIVER } from '../../graphql/queries';
+import {
+  RIDE_CREATED,
+  RIDE_CANCELED,
+  RIDE_COMPLETED,
+  RIDE_EXPIRED,
+  DRIVER_DUTY_STATUS_UPDATES,
+  DRIVER_AVAILABILITY_UPDATES,
+} from '../../graphql/subscriptions';
+import { secureStorage } from '../../utils/secureStorage';
+import { secondsToTimeString } from '../../utils/formatting';
 
-const DriverHomeScreen = () => {
+const DriverHomeScreen = ({ navigation }) => {
+  const [activeTab, setActiveTab] = useState('requests');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const userId = useUserStore((state) => state.userId);
+  const userName = useUserStore((state) => state.userName);
+  const resetAuthState = useAuthStore((state) => state.resetAuthState);
+  const resetUserState = useUserStore((state) => state.resetUserState);
+  const resetDriverState = useDriverStore((state) => state.resetDriverState);
+  const isOnDuty = useDriverStore((state) => state.isOnDuty);
+  const updateDriverDutyStatus = useDriverStore((state) => state.updateDriverDutyStatus);
+  const riderQueue = useDriverStore((state) => state.riderQueue);
+  const nextAvailableAt = useDriverStore((state) => state.nextAvailableAt);
+  const updateDriverAvailability = useDriverStore((state) => state.updateDriverAvailability);
+  const updateDriverRiderQueue = useDriverStore((state) => state.updateDriverRiderQueue);
+
+  const [logoutDriver] = useMutation(LOGOUT_DRIVER);
+  const [updateDutyStatus, { loading: dutyLoading }] = useMutation(UPDATE_DRIVER_IS_ON_DUTY);
+  const [updateRideStatus] = useMutation(UPDATE_RIDE_STATUS);
+  const [updateDriverNextAvailable] = useMutation(UPDATE_DRIVER_NEXT_AVAILABLE_AT);
+
+  // Fetch driver data
+  const { data: driverData } = useQuery(GET_SINGLE_DRIVER, {
+    variables: { id: userId },
+    skip: !userId,
+  });
+
+  // Fetch active rides (ride requests)
+  const {
+    data: activeRidesData,
+    refetch: refetchActive,
+  } = useQuery(GET_ACTIVE_RIDES, {
+    variables: { driverId: parseInt(userId) },
+    skip: !userId,
+    fetchPolicy: 'network-only',
+  });
+
+  // Fetch accepted rides (driver's queue)
+  const {
+    data: acceptedRidesData,
+    refetch: refetchAccepted,
+  } = useQuery(GET_ACCEPTED_RIDES, {
+    variables: { driverId: userId },
+    skip: !userId,
+    fetchPolicy: 'network-only',
+  });
+
+  // Initialize driver state from query
+  useEffect(() => {
+    if (driverData?.getDriver) {
+      const driver = driverData.getDriver;
+      updateDriverDutyStatus(driver.isOnDuty);
+      updateDriverRiderQueue(driver.riderQueue || 0);
+      updateDriverAvailability(driver.driverNextAvailableAt);
+    }
+  }, [driverData]);
+
+  // Subscriptions for real-time updates
+  useSubscription(RIDE_CREATED, {
+    variables: { driverId: parseInt(userId) },
+    skip: !userId,
+    onData: () => {
+      refetchActive();
+      Toast.show({ type: 'info', text1: 'New ride request!' });
+    },
+  });
+
+  useSubscription(RIDE_CANCELED, {
+    onData: () => {
+      refetchActive();
+      refetchAccepted();
+    },
+  });
+
+  useSubscription(RIDE_COMPLETED, {
+    onData: () => {
+      refetchAccepted();
+    },
+  });
+
+  useSubscription(RIDE_EXPIRED, {
+    onData: () => {
+      refetchActive();
+    },
+  });
+
+  useSubscription(DRIVER_DUTY_STATUS_UPDATES, {
+    onData: ({ data: subData }) => {
+      const update = subData?.data?.driverDutyStatusUpdates;
+      if (update && String(update.id) === String(userId)) {
+        updateDriverDutyStatus(update.isOnDuty);
+      }
+    },
+  });
+
+  useSubscription(DRIVER_AVAILABILITY_UPDATES, {
+    onData: ({ data: subData }) => {
+      const update = subData?.data?.driverAvailabilityUpdates;
+      if (update && String(update.id) === String(userId)) {
+        updateDriverRiderQueue(update.riderQueue);
+        updateDriverAvailability(update.driverNextAvailableAt);
+      }
+    },
+  });
+
+  const activeRides = activeRidesData?.getActiveRides || [];
+  const acceptedRides = acceptedRidesData?.getAcceptedRides || [];
+
+  const handleToggleDuty = async () => {
+    try {
+      await updateDutyStatus({
+        variables: { id: userId, isOnDuty: !isOnDuty },
+      });
+      updateDriverDutyStatus(!isOnDuty);
+      Toast.show({
+        type: 'success',
+        text1: !isOnDuty ? 'You are now on duty!' : 'You are now off duty',
+      });
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'Failed to update duty status' });
+    }
+  };
+
+  const handleAcceptRide = async (ride) => {
+    try {
+      await updateRideStatus({
+        variables: {
+          id: ride.id,
+          driverId: userId,
+          driverName: userName,
+          isRequested: false,
+          isAccepted: true,
+          isCanceled: false,
+          isCompleted: false,
+          isExpired: false,
+        },
+      });
+      await updateDriverNextAvailable({
+        variables: {
+          id: userId,
+          riderQueueChange: 1,
+          secondsToAdd: 10 * 60,
+        },
+      });
+      Toast.show({ type: 'success', text1: 'Ride accepted!' });
+      refetchActive();
+      refetchAccepted();
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'Failed to accept ride' });
+    }
+  };
+
+  const handleCompleteRide = async (ride) => {
+    try {
+      await updateRideStatus({
+        variables: {
+          id: ride.id,
+          driverId: userId,
+          driverName: userName,
+          isRequested: false,
+          isAccepted: false,
+          isCanceled: false,
+          isCompleted: true,
+          isExpired: false,
+        },
+      });
+      await updateDriverNextAvailable({
+        variables: {
+          id: userId,
+          riderQueueChange: -1,
+          secondsToAdd: -5 * 60,
+        },
+      });
+      Toast.show({ type: 'success', text1: 'Ride completed!' });
+      refetchAccepted();
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'Failed to complete ride' });
+    }
+  };
+
+  const handleCancelRide = async (ride) => {
+    try {
+      await updateRideStatus({
+        variables: {
+          id: ride.id,
+          isRequested: false,
+          isAccepted: false,
+          isCanceled: true,
+          isCompleted: false,
+          isExpired: false,
+          canceledBy: 'DRIVER',
+        },
+      });
+      await updateDriverNextAvailable({
+        variables: {
+          id: userId,
+          riderQueueChange: -1,
+          secondsToAdd: -10 * 60,
+        },
+      });
+      Toast.show({ type: 'info', text1: 'Ride canceled' });
+      refetchAccepted();
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'Failed to cancel ride' });
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logoutDriver({ context: { isRefreshOperation: true } });
+    } catch (err) {}
+    await secureStorage.removeRefreshToken();
+    resetDriverState();
+    resetUserState();
+    resetAuthState();
+    Toast.show({ type: 'success', text1: 'Logged out successfully' });
+  };
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refetchActive(), refetchAccepted()]);
+    setRefreshing(false);
+  }, []);
+
+  // Availability timer display
+  const getAvailabilityText = () => {
+    if (!nextAvailableAt) return 'Now';
+    const now = Math.floor(Date.now() / 1000);
+    const diff = nextAvailableAt - now;
+    if (diff <= 0) return 'Now';
+    return secondsToTimeString(diff);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Driver Dashboard</Text>
-        <Text style={styles.subtitle}>Coming soon</Text>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>Driver Dashboard</Text>
+          <Text style={styles.userName}>{userName || 'Driver'}</Text>
+        </View>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={24} color={colors.white} />
+        </TouchableOpacity>
       </View>
+
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {/* Duty Toggle */}
+        <View style={styles.dutyCard}>
+          <View style={styles.dutyInfo}>
+            <View style={[styles.dutyDot, isOnDuty ? styles.dutyDotOn : styles.dutyDotOff]} />
+            <Text style={styles.dutyText}>{isOnDuty ? 'On Duty' : 'Off Duty'}</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.dutyToggle, isOnDuty ? styles.dutyToggleOn : styles.dutyToggleOff]}
+            onPress={handleToggleDuty}
+            disabled={dutyLoading}
+          >
+            {dutyLoading ? (
+              <ActivityIndicator color={colors.white} size="small" />
+            ) : (
+              <Text style={styles.dutyToggleText}>
+                {isOnDuty ? 'Go Off Duty' : 'Go On Duty'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{riderQueue}</Text>
+            <Text style={styles.statLabel}>In Queue</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{getAvailabilityText()}</Text>
+            <Text style={styles.statLabel}>Available In</Text>
+          </View>
+        </View>
+
+        {/* Tab Bar */}
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'requests' && styles.tabActive]}
+            onPress={() => setActiveTab('requests')}
+          >
+            <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>
+              Ride Requests ({activeRides.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'queue' && styles.tabActive]}
+            onPress={() => setActiveTab('queue')}
+          >
+            <Text style={[styles.tabText, activeTab === 'queue' && styles.tabTextActive]}>
+              Your Queue ({acceptedRides.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Content */}
+        {activeTab === 'requests' ? (
+          activeRides.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="car-outline" size={48} color={colors.gray[300]} />
+              <Text style={styles.emptyText}>
+                {isOnDuty ? 'No ride requests yet' : 'Go on duty to see ride requests'}
+              </Text>
+            </View>
+          ) : (
+            activeRides.map((ride) => (
+              <View key={ride.id} style={styles.rideCard}>
+                <View style={styles.rideCardHeader}>
+                  <Text style={styles.riderName}>{ride.riderName}</Text>
+                  {ride.bidAmount > 0 && (
+                    <View style={styles.bidTag}>
+                      <Text style={styles.bidTagText}>${ride.bidAmount}</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.locationRow}>
+                  <View style={[styles.dot, { backgroundColor: colors.rider.light }]} />
+                  <Text style={styles.locationText} numberOfLines={1}>{ride.pickUp}</Text>
+                </View>
+                <View style={styles.locationRow}>
+                  <View style={[styles.dot, { backgroundColor: colors.error.light }]} />
+                  <Text style={styles.locationText} numberOfLines={1}>{ride.dropOff}</Text>
+                </View>
+                <View style={styles.rideCardMeta}>
+                  <Text style={styles.metaText}>{ride.passengers} passenger{ride.passengers > 1 ? 's' : ''}</Text>
+                  <Text style={styles.metaText}>{ride.pickUpTime}</Text>
+                </View>
+                {isOnDuty && (
+                  <TouchableOpacity
+                    style={styles.acceptButton}
+                    onPress={() => handleAcceptRide(ride)}
+                  >
+                    <Text style={styles.acceptButtonText}>Accept Ride</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))
+          )
+        ) : acceptedRides.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="list-outline" size={48} color={colors.gray[300]} />
+            <Text style={styles.emptyText}>No rides in your queue</Text>
+          </View>
+        ) : (
+          acceptedRides.map((ride, index) => (
+            <View key={ride.id} style={styles.rideCard}>
+              <View style={styles.rideCardHeader}>
+                <View style={styles.queueBadge}>
+                  <Text style={styles.queueBadgeText}>#{index + 1}</Text>
+                </View>
+                <Text style={styles.riderName}>{ride.riderName}</Text>
+              </View>
+              <View style={styles.locationRow}>
+                <View style={[styles.dot, { backgroundColor: colors.rider.light }]} />
+                <Text style={styles.locationText} numberOfLines={1}>{ride.pickUp}</Text>
+              </View>
+              <View style={styles.locationRow}>
+                <View style={[styles.dot, { backgroundColor: colors.error.light }]} />
+                <Text style={styles.locationText} numberOfLines={1}>{ride.dropOff}</Text>
+              </View>
+              <View style={styles.queueActions}>
+                <TouchableOpacity
+                  style={styles.completeButton}
+                  onPress={() => handleCompleteRide(ride)}
+                >
+                  <Text style={styles.completeButtonText}>Complete</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => handleCancelRide(ride)}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        )}
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  content: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
-  title: { fontSize: 24, fontWeight: '700', color: colors.gray[900], marginBottom: 8 },
-  subtitle: { fontSize: 16, color: colors.gray[500] },
+  container: {
+    flex: 1,
+    backgroundColor: colors.driver.dark,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 10,
+    paddingBottom: 20,
+  },
+  greeting: {
+    fontSize: 14,
+    color: colors.gold.light,
+    fontWeight: '500',
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.white,
+  },
+  logoutButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  content: {
+    flex: 1,
+    backgroundColor: colors.gray[50],
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  dutyCard: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  dutyInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dutyDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  dutyDotOn: {
+    backgroundColor: colors.rider.light,
+  },
+  dutyDotOff: {
+    backgroundColor: colors.gray[400],
+  },
+  dutyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.gray[900],
+  },
+  dutyToggle: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+  },
+  dutyToggleOn: {
+    backgroundColor: colors.gray[600],
+  },
+  dutyToggleOff: {
+    backgroundColor: colors.rider.dark,
+  },
+  dutyToggleText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.driver.dark,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: colors.gray[500],
+    fontWeight: '500',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: colors.gray[100],
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 16,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabActive: {
+    backgroundColor: colors.white,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[500],
+  },
+  tabTextActive: {
+    color: colors.gray[900],
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    marginTop: 12,
+    fontSize: 15,
+    color: colors.gray[400],
+    textAlign: 'center',
+  },
+  rideCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  rideCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  riderName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.gray[900],
+    flex: 1,
+  },
+  bidTag: {
+    backgroundColor: colors.gold.light,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+  },
+  bidTagText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[900],
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  locationText: {
+    fontSize: 14,
+    color: colors.gray[700],
+    flex: 1,
+  },
+  rideCardMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[100],
+  },
+  metaText: {
+    fontSize: 13,
+    color: colors.gray[500],
+  },
+  acceptButton: {
+    backgroundColor: colors.rider.dark,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  acceptButtonText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  queueBadge: {
+    backgroundColor: colors.driver.light,
+    paddingVertical: 2,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+  },
+  queueBadgeText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  queueActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  completeButton: {
+    flex: 1,
+    backgroundColor: colors.rider.dark,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  completeButtonText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.error.light,
+  },
+  cancelButtonText: {
+    color: colors.error.light,
+    fontSize: 15,
+    fontWeight: '600',
+  },
 });
 
 export default DriverHomeScreen;

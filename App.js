@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { ApolloProvider } from '@apollo/client';
+import { ApolloProvider } from '@apollo/client/react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import useApollo from './src/graphql/client';
