@@ -73,8 +73,10 @@ const SignupScreen = ({ navigation, route }) => {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    // Backend requires 8+ (Zod userSchema) — a 6-char minimum here let
+    // users through client validation only to hit an opaque server error.
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
       return;
     }
 
