@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,15 +7,17 @@ import {
   ScrollView,
   Linking,
   ActivityIndicator,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useMutation, useQuery, useSubscription } from '@apollo/client/react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useMutation, useQuery, useSubscription, useLazyQuery } from '@apollo/client/react';
 import Toast from 'react-native-toast-message';
 import { colors } from '../../theme/colors';
 import { useUserStore, useRideStore } from '../../stores';
 import { UPDATE_RIDE_STATUS, RESET_RIDER_RIDE_FLOW_STATUS } from '../../graphql/mutations';
-import { GET_SINGLE_DRIVER } from '../../graphql/queries';
+import { GET_SINGLE_DRIVER, GET_SINGLE_RIDE } from '../../graphql/queries';
 import {
   RIDE_COMPLETED,
   RIDE_CANCELED,
@@ -34,6 +36,56 @@ const PickupInfoScreen = ({ navigation, route }) => {
 
   const [updateRideStatus, { loading: cancelLoading }] = useMutation(UPDATE_RIDE_STATUS);
   const [resetRiderFlow] = useMutation(RESET_RIDER_RIDE_FLOW_STATUS);
+  const [fetchRide] = useLazyQuery(GET_SINGLE_RIDE, { fetchPolicy: 'network-only' });
+
+  // Subscriptions silently miss events while the app is backgrounded — a
+  // driver completing/canceling while the rider's phone was locked would
+  // leave this screen stale. Re-check the ride's status on focus and on
+  // return to foreground.
+  const syncRideStatus = useCallback(async () => {
+    if (!ride?.id) return;
+    try {
+      const { data } = await fetchRide({ variables: { id: ride.id } });
+      const current = data?.getRide;
+      if (!current) return;
+
+      if (current.isCompleted) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'RiderTabs' }, { name: 'RideCompleted' }],
+        });
+      } else if (current.isCanceled) {
+        navigation.reset({
+          index: 0,
+          routes: [
+            { name: 'RiderTabs' },
+            {
+              name: 'RideCanceled',
+              params: {
+                ride: { ...ride, ...current },
+                canceledBy: current.canceledBy,
+              },
+            },
+          ],
+        });
+      }
+    } catch (err) {
+      // Keep showing pickup info — subscriptions remain the primary signal.
+    }
+  }, [ride?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      syncRideStatus();
+    }, [syncRideStatus])
+  );
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') syncRideStatus();
+    });
+    return () => sub.remove();
+  }, [syncRideStatus]);
 
   // Fetch driver info
   const { data: driverData } = useQuery(GET_SINGLE_DRIVER, {
@@ -139,11 +191,11 @@ const PickupInfoScreen = ({ navigation, route }) => {
   };
 
   const getAvailabilityText = () => {
+    // `driverNextAvailableAt` is a Long (ms timestamp), not seconds.
     if (!driverAvailableAt) return 'Now';
-    const now = Math.floor(Date.now() / 1000);
-    const diff = driverAvailableAt - now;
-    if (diff <= 0) return 'Now';
-    return '~' + secondsToTimeString(diff);
+    const diffMs = driverAvailableAt - Date.now();
+    if (diffMs <= 0) return 'Now';
+    return '~' + secondsToTimeString(Math.floor(diffMs / 1000));
   };
 
   if (!ride) {

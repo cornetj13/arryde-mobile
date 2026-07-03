@@ -9,6 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useSubscription } from '@apollo/client/react';
 import Toast from 'react-native-toast-message';
@@ -31,10 +32,21 @@ import {
 } from '../../graphql/subscriptions';
 import { secureStorage } from '../../utils/secureStorage';
 import { secondsToTimeString } from '../../utils/formatting';
+import RideStatusModal from '../../components/driver/RideStatusModal';
 
 const DriverHomeScreen = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState('requests');
   const [refreshing, setRefreshing] = useState(false);
+
+  // Modal shown after a ride completes (this driver tapped Complete) or gets
+  // canceled by the rider. eventType=null means hidden.
+  const [rideStatusModal, setRideStatusModal] = useState({
+    visible: false,
+    eventType: null,
+    riderName: '',
+  });
+  const closeRideStatusModal = () =>
+    setRideStatusModal((s) => ({ ...s, visible: false }));
 
   const userId = useUserStore((state) => state.userId);
   const userName = useUserStore((state) => state.userName);
@@ -89,6 +101,19 @@ const DriverHomeScreen = ({ navigation }) => {
     }
   }, [driverData]);
 
+  // Refetch ride lists every time this screen regains focus.
+  // Covers two important UX paths:
+  //   - User taps a "new ride request" push notification while the app is
+  //     backgrounded → the screen is already mounted, subscriptions may have
+  //     missed the event during background, so we pull fresh state.
+  //   - User navigates between tabs and comes back to Home — same idea.
+  useFocusEffect(
+    useCallback(() => {
+      refetchActive();
+      refetchAccepted();
+    }, [refetchActive, refetchAccepted])
+  );
+
   // Subscriptions for real-time updates
   useSubscription(RIDE_CREATED, {
     variables: { driverId: parseInt(userId) },
@@ -100,9 +125,28 @@ const DriverHomeScreen = ({ navigation }) => {
   });
 
   useSubscription(RIDE_CANCELED, {
-    onData: () => {
+    onData: ({ data: subData }) => {
       refetchActive();
       refetchAccepted();
+
+      // Show the cancellation modal only when:
+      //  - the RIDER (not this driver) initiated the cancel, AND
+      //  - the ride was actually assigned to this driver (driverId matches).
+      // This avoids modaling drivers who only ever saw the request in passing.
+      const payload = subData?.data?.rideCanceled;
+      if (!payload) return;
+      const { ride, canceledBy } = payload;
+      if (
+        canceledBy === 'RIDER' &&
+        ride?.driverId != null &&
+        String(ride.driverId) === String(userId)
+      ) {
+        setRideStatusModal({
+          visible: true,
+          eventType: 'canceled',
+          riderName: ride.riderName,
+        });
+      }
     },
   });
 
@@ -169,18 +213,25 @@ const DriverHomeScreen = ({ navigation }) => {
           isExpired: false,
         },
       });
-      await updateDriverNextAvailable({
-        variables: {
-          id: userId,
-          riderQueueChange: 1,
-          secondsToAdd: 10 * 60,
-        },
-      });
+      // Server atomically adds +10 min to the availability clock and
+      // recounts the queue — no second mutation needed.
       Toast.show({ type: 'success', text1: 'Ride accepted!' });
       refetchActive();
       refetchAccepted();
     } catch (err) {
-      Toast.show({ type: 'error', text1: 'Failed to accept ride' });
+      // RIDE_ALREADY_ACCEPTED = another driver won the race for this ride.
+      const code =
+        err?.graphQLErrors?.[0]?.extensions?.code ||
+        err?.errors?.[0]?.extensions?.code;
+      Toast.show({
+        type: 'error',
+        text1:
+          code === 'RIDE_ALREADY_ACCEPTED'
+            ? 'Another driver just took this ride'
+            : 'Failed to accept ride',
+      });
+      // Refresh so the taken ride drops off the request list.
+      refetchActive();
     }
   };
 
@@ -198,15 +249,16 @@ const DriverHomeScreen = ({ navigation }) => {
           isExpired: false,
         },
       });
-      await updateDriverNextAvailable({
-        variables: {
-          id: userId,
-          riderQueueChange: -1,
-          secondsToAdd: -5 * 60,
-        },
-      });
-      Toast.show({ type: 'success', text1: 'Ride completed!' });
+      // Server atomically frees -5 min on the availability clock and
+      // recounts the queue — no second mutation needed.
       refetchAccepted();
+      // Modal replaces the prior toast — gives the driver an immediate chance
+      // to fine-tune their availability after finishing the ride.
+      setRideStatusModal({
+        visible: true,
+        eventType: 'completed',
+        riderName: ride.riderName,
+      });
     } catch (err) {
       Toast.show({ type: 'error', text1: 'Failed to complete ride' });
     }
@@ -225,13 +277,8 @@ const DriverHomeScreen = ({ navigation }) => {
           canceledBy: 'DRIVER',
         },
       });
-      await updateDriverNextAvailable({
-        variables: {
-          id: userId,
-          riderQueueChange: -1,
-          secondsToAdd: -10 * 60,
-        },
-      });
+      // Server atomically refunds the queued 10 min and recounts the queue —
+      // no second mutation needed.
       Toast.show({ type: 'info', text1: 'Ride canceled' });
       refetchAccepted();
     } catch (err) {
@@ -256,13 +303,42 @@ const DriverHomeScreen = ({ navigation }) => {
     setRefreshing(false);
   }, []);
 
-  // Availability timer display
-  const getAvailabilityText = () => {
-    if (!nextAvailableAt) return 'Now';
-    const now = Math.floor(Date.now() / 1000);
-    const diff = nextAvailableAt - now;
-    if (diff <= 0) return 'Now';
-    return secondsToTimeString(diff);
+  // Live-ticking availability display.
+  // `nextAvailableAt` is a `Long` (millisecond Unix timestamp) from the API —
+  // NOT seconds — so subtract from Date.now() directly, then convert ms→s for
+  // the formatter. Re-runs every second so the timer counts down on screen.
+  const [availabilityText, setAvailabilityText] = useState('Now');
+  useEffect(() => {
+    const update = () => {
+      if (!nextAvailableAt) {
+        setAvailabilityText('Now');
+        return;
+      }
+      const diffMs = nextAvailableAt - Date.now();
+      if (diffMs <= 0) {
+        setAvailabilityText('Now');
+        return;
+      }
+      setAvailabilityText(secondsToTimeString(Math.floor(diffMs / 1000), { showSeconds: true }));
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [nextAvailableAt]);
+
+  // Adjust the next-available time by ±minutes (0 = reset to "now").
+  const handleTimeChange = async (minutes) => {
+    try {
+      await updateDriverNextAvailable({
+        variables: {
+          id: userId,
+          riderQueueChange: 0,
+          secondsToAdd: minutes * 60,
+        },
+      });
+    } catch (err) {
+      Toast.show({ type: 'error', text1: 'Failed to update availability' });
+    }
   };
 
   return (
@@ -304,16 +380,48 @@ const DriverHomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{riderQueue}</Text>
-            <Text style={styles.statLabel}>In Queue</Text>
+        {/* Availability Card — live timer + adjust controls */}
+        <View style={styles.availabilityCard}>
+          <Text style={styles.availabilityLabel}>Next Available In</Text>
+          <Text style={styles.availabilityValue}>{availabilityText}</Text>
+          <View style={styles.timeControlsRow}>
+            <TouchableOpacity
+              style={[styles.timeButton, styles.timeButtonNegative]}
+              onPress={() => handleTimeChange(-5)}
+            >
+              <Text style={styles.timeButtonNegativeText}>-5m</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.timeButton, styles.timeButtonNegative]}
+              onPress={() => handleTimeChange(-1)}
+            >
+              <Text style={styles.timeButtonNegativeText}>-1m</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.timeButton, styles.timeButtonReset]}
+              onPress={() => handleTimeChange(0)}
+            >
+              <Ionicons name="refresh" size={18} color={colors.gold.dark} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.timeButton, styles.timeButtonPositive]}
+              onPress={() => handleTimeChange(1)}
+            >
+              <Text style={styles.timeButtonPositiveText}>+1m</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.timeButton, styles.timeButtonPositive]}
+              onPress={() => handleTimeChange(5)}
+            >
+              <Text style={styles.timeButtonPositiveText}>+5m</Text>
+            </TouchableOpacity>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{getAvailabilityText()}</Text>
-            <Text style={styles.statLabel}>Available In</Text>
-          </View>
+        </View>
+
+        {/* Queue Card */}
+        <View style={styles.queueCard}>
+          <Text style={styles.queueLabel}>In Queue</Text>
+          <Text style={styles.queueValue}>{riderQueue}</Text>
         </View>
 
         {/* Tab Bar */}
@@ -421,6 +529,15 @@ const DriverHomeScreen = ({ navigation }) => {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Post-event modal: completion or rider-cancel */}
+      <RideStatusModal
+        visible={rideStatusModal.visible}
+        eventType={rideStatusModal.eventType}
+        riderName={rideStatusModal.riderName}
+        onClose={closeRideStatusModal}
+        onTimeChange={handleTimeChange}
+      />
     </SafeAreaView>
   );
 };
@@ -515,33 +632,95 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  statCard: {
-    flex: 1,
+  availabilityCard: {
     backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 14,
+    padding: 18,
     alignItems: 'center',
+    marginBottom: 12,
     shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.driver.dark,
-    marginBottom: 4,
-  },
-  statLabel: {
+  availabilityLabel: {
     fontSize: 12,
     color: colors.gray[500],
-    fontWeight: '500',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  availabilityValue: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: colors.driver.dark,
+    marginTop: 6,
+    marginBottom: 14,
+    fontVariant: ['tabular-nums'],
+  },
+  timeControlsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  timeButton: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    maxWidth: 64,
+  },
+  timeButtonNegative: {
+    backgroundColor: colors.error.light + '15',
+    borderWidth: 1,
+    borderColor: colors.error.light + '40',
+  },
+  timeButtonNegativeText: {
+    color: colors.error.light,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  timeButtonReset: {
+    backgroundColor: colors.gold.light + '25',
+    borderWidth: 1,
+    borderColor: colors.gold.dark + '40',
+  },
+  timeButtonPositive: {
+    backgroundColor: colors.rider.light + '15',
+    borderWidth: 1,
+    borderColor: colors.rider.light + '40',
+  },
+  timeButtonPositiveText: {
+    color: colors.rider.dark,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  queueCard: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    padding: 18,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  queueLabel: {
+    fontSize: 14,
+    color: colors.gray[600],
+    fontWeight: '600',
+  },
+  queueValue: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.driver.dark,
   },
   tabBar: {
     flexDirection: 'row',
