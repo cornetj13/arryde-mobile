@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation } from '@apollo/client/react';
 import Toast from 'react-native-toast-message';
 import { colors } from '../../theme/colors';
-import { useUserStore, useRiderStore } from '../../stores';
+import { useUserStore } from '../../stores';
 import { GET_FAVORITE_DRIVERS, GET_AVAILABLE_DRIVERS } from '../../graphql/queries';
 import { ADD_FAVORITE_DRIVER, REMOVE_FAVORITE_DRIVER } from '../../graphql/mutations';
 import { secondsToTimeString } from '../../utils/formatting';

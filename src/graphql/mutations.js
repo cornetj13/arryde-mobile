@@ -104,31 +104,6 @@ export const LOGOUT_DRIVER = gql`
 
 // ============ RIDER MUTATIONS ============
 
-// Create rider.
-export const CREATE_RIDER = gql`
-  mutation CreateRider(
-    $email: EmailAddress!
-    $password: String!
-    $name: String!
-    $phoneNumber: String!
-  ) {
-    createRider(
-      email: $email
-      password: $password
-      name: $name
-      phoneNumber: $phoneNumber
-    ) {
-      id
-      email
-      name
-      phoneNumber
-      currentRideId
-      completedRides
-      homeAddress
-    }
-  }
-`;
-
 // Update rider.
 export const UPDATE_RIDER = gql`
   mutation UpdateRider(
@@ -162,15 +137,6 @@ export const UPDATE_RIDER = gql`
       homeAddress
       workAddress
       profilePicture
-    }
-  }
-`;
-
-// Delete rider.
-export const DELETE_RIDER = gql`
-  mutation DeleteRider($id: ID!) {
-    deleteRider(id: $id) {
-      message
     }
   }
 `;
@@ -216,36 +182,6 @@ export const RESET_RIDER_RIDE_FLOW_STATUS = gql`
 `;
 
 // ============ DRIVER MUTATIONS ============
-
-// Create driver.
-export const CREATE_DRIVER = gql`
-  mutation CreateDriver(
-    $email: EmailAddress!
-    $password: String!
-    $name: String!
-    $phoneNumber: String!
-  ) {
-    createDriver(
-      email: $email
-      password: $password
-      name: $name
-      phoneNumber: $phoneNumber
-    ) {
-      id
-      email
-      name
-      phoneNumber
-      licensePlate
-      carMake
-      carModel
-      carColor
-      isOnDuty
-      currentRideId
-      riderQueue
-      driverNextAvailableAt
-    }
-  }
-`;
 
 // Update driver.
 export const UPDATE_DRIVER = gql`
@@ -294,15 +230,6 @@ export const UPDATE_DRIVER = gql`
       profilePicture
       createdAt
       updatedAt
-    }
-  }
-`;
-
-// Delete driver.
-export const DELETE_DRIVER = gql`
-  mutation DeleteDriver($id: ID!) {
-    deleteDriver(id: $id) {
-      message
     }
   }
 `;
@@ -411,53 +338,6 @@ export const CREATE_RIDE = gql`
   }
 `;
 
-// Update ride (details about ride).
-export const UPDATE_RIDE = gql`
-  mutation UpdateRide(
-    $id: ID!
-    $riderId: ID
-    $riderName: String
-    $phoneNumber: String
-    $passengers: Int
-    $pickUp: String
-    $dropOff: String
-    $pickUpTime: String
-    $bidAmount: Int
-    $requestedDriverIds: [ID]
-    $driverId: ID
-    $driverName: String
-  ) {
-    updateRide(
-      id: $id
-      riderId: $riderId
-      riderName: $riderName
-      phoneNumber: $phoneNumber
-      passengers: $passengers
-      pickUp: $pickUp
-      dropOff: $dropOff
-      pickUpTime: $pickUpTime
-      bidAmount: $bidAmount
-      requestedDriverIds: $requestedDriverIds
-      driverId: $driverId
-      driverName: $driverName
-    ) {
-      id
-      riderId
-      riderName
-      phoneNumber
-      passengers
-      pickUp
-      dropOff
-      pickUpTime
-      date
-      bidAmount
-      requestedDriverIds
-      driverId
-      driverName
-    }
-  }
-`;
-
 // Update ride status (ride flow state).
 export const UPDATE_RIDE_STATUS = gql`
   mutation UpdateRideStatus(
@@ -491,15 +371,6 @@ export const UPDATE_RIDE_STATUS = gql`
       isCompleted
       isExpired
       canceledBy
-    }
-  }
-`;
-
-// Delete ride.
-export const DELETE_RIDE = gql`
-  mutation DeleteRide($id: ID!) {
-    deleteRide(id: $id) {
-      message
     }
   }
 `;

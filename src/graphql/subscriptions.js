@@ -2,31 +2,6 @@ import { gql } from '@apollo/client';
 
 // ============ DRIVER SUBSCRIPTIONS ============
 
-// Driver updates subscription.
-export const DRIVER_UPDATES = gql`
-  subscription DriverUpdates {
-    driverUpdates {
-      mutationType
-      driver {
-        id
-        email
-        name
-        phoneNumber
-        licensePlate
-        carMake
-        carModel
-        carColor
-        isOnDuty
-        currentRideId
-        riderQueue
-        driverNextAvailableAt
-        createdAt
-        updatedAt
-      }
-    }
-  }
-`;
-
 // Driver's duty status update subscription.
 export const DRIVER_DUTY_STATUS_UPDATES = gql`
   subscription DriverDutyStatusUpdates {
@@ -77,24 +52,6 @@ export const RIDE_CREATED = gql`
       expiredAt
       createdAt
       updatedAt
-    }
-  }
-`;
-
-// Subscription for when ride details are updated.
-export const RIDE_DETAILS_UPDATED = gql`
-  subscription RideDetailsUpdated {
-    rideDetailsUpdated {
-      id
-      riderId
-      riderName
-      phoneNumber
-      passengers
-      pickUp
-      dropOff
-      pickUpTime
-      bidAmount
-      waitingTime
     }
   }
 `;
