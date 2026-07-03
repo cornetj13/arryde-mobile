@@ -58,11 +58,11 @@ const ChooseDriverScreen = ({ navigation, route }) => {
   };
 
   const getAvailabilityText = (driver) => {
+    // `driverNextAvailableAt` is a Long (ms timestamp), not seconds.
     if (!driver.driverNextAvailableAt) return 'Now';
-    const now = Math.floor(Date.now() / 1000);
-    const diff = driver.driverNextAvailableAt - now;
-    if (diff <= 0) return 'Now';
-    return '~' + secondsToTimeString(diff);
+    const diffMs = driver.driverNextAvailableAt - Date.now();
+    if (diffMs <= 0) return 'Now';
+    return '~' + secondsToTimeString(Math.floor(diffMs / 1000));
   };
 
   return (

@@ -17,10 +17,20 @@ export const formatPhone = (phone) => {
 
 /**
  * Convert seconds to a human-readable time string.
+ *
+ * Default ("words" form): "1h 5m" / "5m"
+ * With `showSeconds: true` (clock form, good for live countdowns): "1:05:23" / "5:23"
  */
-export const secondsToTimeString = (totalSeconds) => {
+export const secondsToTimeString = (totalSeconds, { showSeconds = false } = {}) => {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (showSeconds) {
+    const mm = minutes.toString().padStart(hours > 0 ? 2 : 1, '0');
+    const ss = seconds.toString().padStart(2, '0');
+    return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+  }
 
   if (hours > 0) {
     return `${hours}h ${minutes}m`;

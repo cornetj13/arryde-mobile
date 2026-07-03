@@ -16,6 +16,7 @@ import { useUserStore, useRideStore } from '../../stores';
 import { CREATE_RIDE } from '../../graphql/mutations';
 import BidBadge from '../../components/shared/BidBadge';
 import InfoRow from '../../components/shared/InfoRow';
+import RouteMap from '../../components/shared/RouteMap';
 
 const ConfirmRideScreen = ({ navigation, route }) => {
   const { rideData, selectedDriverIds, selectedDrivers } = route.params;
@@ -36,6 +37,17 @@ const ConfirmRideScreen = ({ navigation, route }) => {
         dropOff: rideData.dropOff,
         pickUpTime: rideData.pickUpTime,
       };
+
+      // Forward lat/lng only when the user picked from autocomplete.
+      // Free-typed addresses pass null and the backend stores them as such.
+      if (rideData.pickUpLat != null && rideData.pickUpLng != null) {
+        variables.pickUpLat = rideData.pickUpLat;
+        variables.pickUpLng = rideData.pickUpLng;
+      }
+      if (rideData.dropOffLat != null && rideData.dropOffLng != null) {
+        variables.dropOffLat = rideData.dropOffLat;
+        variables.dropOffLng = rideData.dropOffLng;
+      }
 
       if (rideData.bidAmount > 0) {
         variables.bidAmount = rideData.bidAmount;
@@ -98,6 +110,28 @@ const ConfirmRideScreen = ({ navigation, route }) => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Route map — bigger than the FindRide preview. Renders nothing when
+              the rider typed addresses by hand (no coords) — the route card
+              below still shows the addresses for review. */}
+          {(rideData.pickUpLat != null || rideData.dropOffLat != null) ? (
+            <View style={styles.mapWrap}>
+              <RouteMap
+                pickup={
+                  rideData.pickUpLat != null
+                    ? { lat: rideData.pickUpLat, lng: rideData.pickUpLng }
+                    : null
+                }
+                dropoff={
+                  rideData.dropOffLat != null
+                    ? { lat: rideData.dropOffLat, lng: rideData.dropOffLng }
+                    : null
+                }
+                height={240}
+                showLegend
+              />
+            </View>
+          ) : null}
+
           {/* Bid Badge */}
           <BidBadge amount={rideData.bidAmount} />
 
@@ -218,6 +252,9 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 24,
     paddingBottom: 120,
+  },
+  mapWrap: {
+    marginBottom: 20,
   },
   driverBanner: {
     flexDirection: 'row',

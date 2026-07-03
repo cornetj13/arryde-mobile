@@ -18,9 +18,11 @@ const RiderHomeScreen = ({ navigation }) => {
 
   const handleLogout = async () => {
     try {
-      await logoutRider({
-        context: { isRefreshOperation: true },
-      });
+      // The auth link reads context.refreshToken to build the
+      // X-Refresh-Token header — without it the server can't find the
+      // session and the refresh token is never revoked.
+      const refreshToken = await secureStorage.getRefreshToken();
+      await logoutRider({ context: { refreshToken } });
     } catch (err) {
       // Continue with logout even if server call fails
     }

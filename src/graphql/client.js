@@ -7,8 +7,9 @@ import {
   split,
   HttpLink,
   gql,
+  CombinedGraphQLErrors,
 } from '@apollo/client';
-import { onError } from '@apollo/client/link/error';
+import { ErrorLink } from '@apollo/client/link/error';
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
 import { createClient } from 'graphql-ws';
 import { getMainDefinition } from '@apollo/client/utilities';
@@ -19,18 +20,26 @@ import { secureStorage } from '../utils/secureStorage';
    CONFIG
    ============================================ */
 
-// Platform-aware dev URLs: web uses localhost, native uses 10.0.2.2 (Android emulator)
+// Platform-aware dev URLs:
+//   web        → localhost
+//   native     → your computer's LAN IP (so physical devices on same WiFi can reach it)
+// NOTE: Update DEV_LAN_IP when your LAN IP changes (check `npx expo start` output).
 import { Platform } from 'react-native';
 
-const DEV_HOST = Platform.OS === 'web' ? 'localhost' : '10.0.2.2';
+const DEV_LAN_IP = '10.0.0.188';
+const DEV_HOST = Platform.OS === 'web' ? 'localhost' : DEV_LAN_IP;
 
+// Production URL is the original Railway subdomain from when the project
+// was called "Bellingham Rideshare" — kept rather than renamed to avoid
+// breaking the web app's existing prod config. Matches arryde-web's
+// VITE_API_GRAPHQL_URI in .env.production.
 const API_URL = __DEV__
   ? `http://${DEV_HOST}:3001/graphql`
-  : 'https://arryde-api-production.up.railway.app/graphql';
+  : 'https://rideshare-api-production.up.railway.app/graphql';
 
 const WS_URL = __DEV__
   ? `ws://${DEV_HOST}:3001/graphql`
-  : 'wss://arryde-api-production.up.railway.app/graphql';
+  : 'wss://rideshare-api-production.up.railway.app/graphql';
 
 /* ============================================
    GRAPHQL MUTATION DEFINITIONS (for internal use)
@@ -126,7 +135,9 @@ const getUserState = () => useUserStore.getState();
    APOLLO CLIENT SETUP
    ============================================ */
 
-let isRefreshing = false;
+// Shared in-flight refresh promise — concurrent failed operations await the
+// SAME refresh instead of racing (a race could return undefined and crash the retry).
+let refreshPromise = null;
 
 const useApollo = () => {
   const { setAccessToken, resetAuthState } = useAuthStore();
@@ -203,46 +214,56 @@ const useApollo = () => {
     return forward(operation);
   });
 
-  // Refresh the access token
-  const refreshAccessToken = async (apolloClient) => {
-    if (isRefreshing) return;
-    isRefreshing = true;
+  // Refresh the access token.
+  // Returns a shared in-flight promise: if a refresh is already running, all
+  // callers await the same one (and get the same result) instead of getting
+  // undefined back from an early return.
+  const refreshAccessToken = (apolloClient) => {
+    if (refreshPromise) return refreshPromise;
 
-    try {
-      const { userType } = getUserState();
-      const mutation =
-        userType === 'rider'
-          ? REFRESH_ACCESS_TOKEN_RIDER
-          : REFRESH_ACCESS_TOKEN_DRIVER;
+    refreshPromise = (async () => {
+      try {
+        const { userType } = getUserState();
+        const mutation =
+          userType === 'rider'
+            ? REFRESH_ACCESS_TOKEN_RIDER
+            : REFRESH_ACCESS_TOKEN_DRIVER;
 
-      // Get refresh token from secure storage to pass via header
-      const refreshToken = await secureStorage.getRefreshToken();
+        // Get refresh token from secure storage to pass via header
+        const refreshToken = await secureStorage.getRefreshToken();
 
-      const { data } = await apolloClient.mutate({
-        mutation,
-        context: { refreshToken },
-      });
+        const { data } = await apolloClient.mutate({
+          mutation,
+          context: { refreshToken },
+        });
 
-      return data.refreshAccessTokenRider || data.refreshAccessTokenDriver;
-    } catch (error) {
-      const serverErrors = [
-        'REFRESH_ACCESS_TOKEN_ERROR',
-        'NO_REFRESH_TOKEN',
-        'INVALID_REFRESH_TOKEN',
-        'MISMATCHED_USER',
-        'SESSION_INVALIDATED',
-        'INVALID_TOKEN',
-      ];
+        return data.refreshAccessTokenRider || data.refreshAccessTokenDriver;
+      } catch (error) {
+        const serverErrors = [
+          'REFRESH_ACCESS_TOKEN_ERROR',
+          'NO_REFRESH_TOKEN',
+          'INVALID_REFRESH_TOKEN',
+          'MISMATCHED_USER',
+          'SESSION_INVALIDATED',
+          'INVALID_TOKEN',
+        ];
 
-      const errorCode = error.graphQLErrors?.[0]?.extensions?.code;
-      if (errorCode && serverErrors.includes(errorCode)) {
-        await forceLogout(apolloClient);
+        // Apollo Client v4: GraphQL errors arrive wrapped in CombinedGraphQLErrors,
+        // not as a top-level `graphQLErrors` array (that's the v3 shape).
+        const errorCode = CombinedGraphQLErrors.is(error)
+          ? error.errors[0]?.extensions?.code
+          : null;
+        if (errorCode && serverErrors.includes(errorCode)) {
+          await forceLogout(apolloClient);
+        }
+
+        throw error;
+      } finally {
+        refreshPromise = null;
       }
+    })();
 
-      throw error;
-    } finally {
-      isRefreshing = false;
-    }
+    return refreshPromise;
   };
 
   // Force logout on auth failure
@@ -264,53 +285,58 @@ const useApollo = () => {
     await apolloClient.clearStore();
   };
 
-  // Error link — handles 401 and auto-refreshes
-  const errorLink = onError(({ graphQLErrors, operation, forward }) => {
-    if (!graphQLErrors) return;
+  // Error link — catches UNAUTHORIZED, refreshes the access token, retries once.
+  // Apollo Client v4: the handler receives { error, operation, forward }, and
+  // GraphQL errors arrive wrapped in a CombinedGraphQLErrors instance (the old
+  // v3 `graphQLErrors` argument no longer exists).
+  const errorLink = new ErrorLink(({ error, operation, forward }) => {
+    // Only handle GraphQL errors; network errors fall through untouched.
+    if (!CombinedGraphQLErrors.is(error)) return;
 
-    const publicOperations = [
-      'GetAvailableDrivers',
-      'GetUnavailableDrivers',
-      'CreateRide',
-      'GetRide',
-    ];
+    // Operations the backend treats as fully public (no checkAuth).
+    // CreateRide/GetRide must NOT be here — for a logged-in rider they ARE
+    // protected. Anonymous callers are excluded below by the `userType` check.
+    const publicOperations = ['GetAvailableDrivers', 'GetUnavailableDrivers'];
 
-    for (const err of graphQLErrors) {
-      const operationName = operation.operationName;
-      const { userType } = getUserState();
+    const operationName = operation.operationName;
+    const { userType } = getUserState();
 
-      if (
-        err.extensions?.code === 'UNAUTHORIZED' &&
-        userType &&
-        !publicOperations.includes(operationName)
-      ) {
-        const { accessToken } = getAuthState();
+    const hasAuthError = error.errors.some(
+      (err) => err.extensions?.code === 'UNAUTHORIZED'
+    );
 
-        if (isTokenExpired(accessToken)) {
-          return new Observable((observer) => {
-            refreshAccessToken(client)
-              .then((newAccessTokenData) => {
-                const newAccessToken = newAccessTokenData.accessToken;
-                setAccessToken(newAccessToken);
-
-                operation.setContext(({ headers = {} }) => ({
-                  headers: {
-                    ...headers,
-                    Authorization: `Bearer ${newAccessToken}`,
-                  },
-                }));
-
-                forward(operation).subscribe({
-                  next: observer.next.bind(observer),
-                  error: observer.error.bind(observer),
-                  complete: observer.complete.bind(observer),
-                });
-              })
-              .catch((error) => observer.error(error));
-          });
-        }
-      }
+    // Bail unless this is an auth error for a logged-in user on a protected op.
+    if (!hasAuthError || !userType || publicOperations.includes(operationName)) {
+      return;
     }
+
+    const { accessToken } = getAuthState();
+    if (!isTokenExpired(accessToken)) return;
+
+    // Refresh the token, then retry the operation. ErrorLink only retries a
+    // given operation once, so a still-failing retry won't loop forever.
+    return new Observable((observer) => {
+      refreshAccessToken(client)
+        .then((newAccessTokenData) => {
+          const newAccessToken = newAccessTokenData.accessToken;
+          setAccessToken(newAccessToken);
+
+          const oldHeaders = operation.getContext().headers;
+          operation.setContext({
+            headers: {
+              ...oldHeaders,
+              Authorization: `Bearer ${newAccessToken}`,
+            },
+          });
+
+          forward(operation).subscribe({
+            next: observer.next.bind(observer),
+            error: observer.error.bind(observer),
+            complete: observer.complete.bind(observer),
+          });
+        })
+        .catch((refreshErr) => observer.error(refreshErr));
+    });
   });
 
   // Split link — subscriptions via WS, everything else via HTTP

@@ -288,7 +288,11 @@ const DriverHomeScreen = ({ navigation }) => {
 
   const handleLogout = async () => {
     try {
-      await logoutDriver({ context: { isRefreshOperation: true } });
+      // The auth link reads context.refreshToken to build the
+      // X-Refresh-Token header — without it the server can't find the
+      // session and the refresh token is never revoked.
+      const refreshToken = await secureStorage.getRefreshToken();
+      await logoutDriver({ context: { refreshToken } });
     } catch (err) {}
     await secureStorage.removeRefreshToken();
     resetDriverState();

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "624736312675",
+    "project_id": "bham-rideshare-app",
+    "storage_bucket": "bham-rideshare-app.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:624736312675:android:92904e934fd19bb9e88756",
+        "android_client_info": {
+          "package_name": "com.cornetj2.arrydemobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "624736312675-kbdv8gg300hgh4epdvd1tm8etufcgvbt.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCXRST1Bh-8vKxNYq4jkry9Dh5U3cx-fR4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "624736312675-kbdv8gg300hgh4epdvd1tm8etufcgvbt.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

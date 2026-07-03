@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@apollo/client/react';
 import { colors } from '../../theme/colors';
 import { useUserStore } from '../../stores';
+import { GET_SINGLE_RIDER } from '../../graphql/queries';
 import { formatPhone } from '../../utils/formatting';
 import OptionSelector from '../../components/shared/OptionSelector';
+import PlacesAutocompleteInput from '../../components/shared/PlacesAutocompleteInput';
+import RouteMap from '../../components/shared/RouteMap';
+import { geocodeAddress } from '../../utils/geocodeAddress';
 
 const PASSENGER_OPTIONS = [
   { label: '1', value: 1 },
@@ -32,6 +37,7 @@ const PICKUP_TIME_OPTIONS = [
 ];
 
 const FindRideScreen = ({ navigation, route }) => {
+  const userId = useUserStore((state) => state.userId);
   const userName = useUserStore((state) => state.userName);
 
   // Prefill data from RideCanceled "Request Again"
@@ -43,9 +49,104 @@ const FindRideScreen = ({ navigation, route }) => {
   const [pickUpTime, setPickUpTime] = useState(prefill.pickUpTime || 'ASAP');
   const [pickUp, setPickUp] = useState(prefill.pickUp || '');
   const [dropOff, setDropOff] = useState(prefill.dropOff || '');
+  // Coords come from the Places Autocomplete selection. Free-typed addresses
+  // leave these null — the backend will still accept the ride, just without
+  // map data. (The map preview hides until at least one coord exists.)
+  const [pickUpCoords, setPickUpCoords] = useState(
+    prefill.pickUpLat != null && prefill.pickUpLng != null
+      ? { lat: prefill.pickUpLat, lng: prefill.pickUpLng }
+      : null
+  );
+  const [dropOffCoords, setDropOffCoords] = useState(
+    prefill.dropOffLat != null && prefill.dropOffLng != null
+      ? { lat: prefill.dropOffLat, lng: prefill.dropOffLng }
+      : null
+  );
   const [bidAmount, setBidAmount] = useState(prefill.bidAmount ? String(prefill.bidAmount) : '');
   const [showBid, setShowBid] = useState(!!prefill.bidAmount);
   const [errors, setErrors] = useState({});
+
+  // Any free-text change to the address clears the stored coords —
+  // coords are only valid for the place the user explicitly *selected*
+  // from the autocomplete dropdown (so the map never shows stale pins).
+  // PlacesAutocompleteInput overwrites both text + coords together on select.
+  const handlePickUpText = (text) => {
+    setPickUp(text);
+    setPickUpCoords(null);
+  };
+  const handleDropOffText = (text) => {
+    setDropOff(text);
+    setDropOffCoords(null);
+  };
+
+  // Quick-pick of a saved Home/Work address. We immediately set the text
+  // (instant feedback), then geocode in the background so the map gets a pin
+  // without the user having to re-type and pick from the autocomplete.
+  const handlePickUpQuickPick = async (address) => {
+    setPickUp(address);
+    setPickUpCoords(null);
+    const result = await geocodeAddress(address);
+    // Guard: only apply coords if the field still holds this same address.
+    // (Otherwise the user may have moved on and we'd stomp on fresh input.)
+    if (result) {
+      setPickUp((current) => (current === address ? result.address : current));
+      setPickUpCoords({ lat: result.lat, lng: result.lng });
+    }
+  };
+  const handleDropOffQuickPick = async (address) => {
+    setDropOff(address);
+    setDropOffCoords(null);
+    const result = await geocodeAddress(address);
+    if (result) {
+      setDropOff((current) => (current === address ? result.address : current));
+      setDropOffCoords({ lat: result.lat, lng: result.lng });
+    }
+  };
+
+  // Fetch rider profile so we can prefill phone + offer saved address quick-picks.
+  const { data: riderData } = useQuery(GET_SINGLE_RIDER, {
+    variables: { id: userId },
+    skip: !userId,
+  });
+  const rider = riderData?.getRider;
+
+  // Backfill name/phone only when the field is still empty —
+  // so this never stomps on a "request again" prefill or user typing.
+  useEffect(() => {
+    if (!rider) return;
+    if (!name && rider.name) setName(rider.name);
+    if (!phone && rider.phoneNumber) setPhone(rider.phoneNumber);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rider]);
+
+  // Renders the Home/Work quick-pick row when the rider has saved addresses.
+  // `onPick` should be one of the handle*Text helpers above (so coords are
+  // cleared — Home/Work addresses are plain text, no lat/lng available).
+  const renderAddressQuickPicks = (onPick) => {
+    if (!rider?.homeAddress && !rider?.workAddress) return null;
+    return (
+      <View style={styles.quickPickRow}>
+        {rider.homeAddress ? (
+          <TouchableOpacity
+            style={styles.quickPickPill}
+            onPress={() => onPick(rider.homeAddress)}
+          >
+            <Ionicons name="home" size={13} color={colors.rider.dark} />
+            <Text style={styles.quickPickText}>Home</Text>
+          </TouchableOpacity>
+        ) : null}
+        {rider.workAddress ? (
+          <TouchableOpacity
+            style={styles.quickPickPill}
+            onPress={() => onPick(rider.workAddress)}
+          >
+            <Ionicons name="briefcase" size={13} color={colors.rider.dark} />
+            <Text style={styles.quickPickText}>Work</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    );
+  };
 
   const handlePhoneChange = (text) => {
     // Strip non-digits
@@ -86,6 +187,12 @@ const FindRideScreen = ({ navigation, route }) => {
         pickUpTime,
         pickUp: pickUp.trim(),
         dropOff: dropOff.trim(),
+        // Coords are only present when the user picked an autocomplete result.
+        // Backend accepts nulls for these; no map shows on Confirm if absent.
+        pickUpLat: pickUpCoords?.lat ?? null,
+        pickUpLng: pickUpCoords?.lng ?? null,
+        dropOffLat: dropOffCoords?.lat ?? null,
+        dropOffLng: dropOffCoords?.lng ?? null,
         bidAmount: bid,
       },
       prefillDriverIds: prefill.requestedDriverIds || [],
@@ -166,33 +273,51 @@ const FindRideScreen = ({ navigation, route }) => {
           {/* Pickup Address */}
           <View style={styles.field}>
             <Text style={styles.label}>Pickup Address</Text>
-            <View style={styles.addressInputRow}>
-              <View style={[styles.addressDot, { backgroundColor: colors.rider.light }]} />
-              <TextInput
-                style={[styles.addressInput, errors.pickUp && styles.inputError]}
-                value={pickUp}
-                onChangeText={setPickUp}
-                placeholder="1234 Main St, Bellingham, WA"
-                placeholderTextColor={colors.gray[400]}
-              />
-            </View>
+            <PlacesAutocompleteInput
+              value={pickUp}
+              onChangeText={handlePickUpText}
+              onPlaceSelected={({ address, lat, lng }) => {
+                setPickUp(address);
+                setPickUpCoords({ lat, lng });
+              }}
+              placeholder="Search by name or address"
+              dotColor={colors.rider.light}
+              hasError={!!errors.pickUp}
+            />
+            {renderAddressQuickPicks(handlePickUpQuickPick)}
             {errors.pickUp && <Text style={styles.errorText}>{errors.pickUp}</Text>}
           </View>
 
           {/* Dropoff Address */}
           <View style={styles.field}>
             <Text style={styles.label}>Dropoff Address</Text>
-            <View style={styles.addressInputRow}>
-              <View style={[styles.addressDot, { backgroundColor: colors.error.light }]} />
-              <TextInput
-                style={[styles.addressInput, errors.dropOff && styles.inputError]}
-                value={dropOff}
-                onChangeText={setDropOff}
-                placeholder="5678 Oak Ave, Bellingham, WA"
-                placeholderTextColor={colors.gray[400]}
-              />
-            </View>
+            <PlacesAutocompleteInput
+              value={dropOff}
+              onChangeText={handleDropOffText}
+              onPlaceSelected={({ address, lat, lng }) => {
+                setDropOff(address);
+                setDropOffCoords({ lat, lng });
+              }}
+              placeholder="Search by name or address"
+              dotColor={colors.error.light}
+              hasError={!!errors.dropOff}
+            />
+            {renderAddressQuickPicks(handleDropOffQuickPick)}
             {errors.dropOff && <Text style={styles.errorText}>{errors.dropOff}</Text>}
+          </View>
+
+          {/* Map preview — always mounted (RouteMap shows a hint overlay
+              until the rider picks at least one autocomplete result).
+              Keeping the MapView stably mounted avoids Android's
+              `addViewAt: failed to insert view` error when the dropdown
+              collapses in the same render tick. */}
+          <View style={styles.mapPreviewWrap}>
+            <RouteMap
+              pickup={pickUpCoords}
+              dropoff={dropOffCoords}
+              height={180}
+              showLegend
+            />
           </View>
 
           {/* Bid Section */}
@@ -334,6 +459,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.gray[900],
     borderWidth: 0,
+  },
+  quickPickRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  quickPickPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.rider.light + '15',
+    borderWidth: 1,
+    borderColor: colors.rider.light + '40',
+  },
+  quickPickText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.rider.dark,
+  },
+  mapPreviewWrap: {
+    marginBottom: 20,
   },
   bidToggle: {
     flexDirection: 'row',

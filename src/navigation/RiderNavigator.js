@@ -8,6 +8,7 @@ import PickupInfoScreen from '../screens/ride/PickupInfoScreen';
 import RideCompletedScreen from '../screens/ride/RideCompletedScreen';
 import RideCanceledScreen from '../screens/ride/RideCanceledScreen';
 import RideExpiredScreen from '../screens/ride/RideExpiredScreen';
+import DriverProfileViewScreen from '../screens/rider/DriverProfileViewScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -22,6 +23,7 @@ const RiderNavigator = () => (
     <Stack.Screen name="RideCompleted" component={RideCompletedScreen} />
     <Stack.Screen name="RideCanceled" component={RideCanceledScreen} />
     <Stack.Screen name="RideExpired" component={RideExpiredScreen} />
+    <Stack.Screen name="DriverProfileView" component={DriverProfileViewScreen} />
   </Stack.Navigator>
 );
 

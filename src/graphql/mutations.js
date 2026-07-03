@@ -261,7 +261,7 @@ export const UPDATE_DRIVER = gql`
     $isOnDuty: Boolean
     $currentRideId: ID
     $riderQueue: Int
-    $driverNextAvailableAt: Int
+    $driverNextAvailableAt: Long
     $profilePicture: String
   ) {
     updateDriver(
@@ -337,6 +337,25 @@ export const UPDATE_DRIVER_NEXT_AVAILABLE_AT = gql`
 // ============ RIDE MUTATIONS ============
 
 // Create ride.
+// Register the device's Expo push token against the logged-in rider.
+// Pass `expoPushToken: null` to clear it (e.g. permission revoked).
+export const REGISTER_RIDER_PUSH_TOKEN = gql`
+  mutation RegisterRiderPushToken($riderId: ID!, $expoPushToken: String) {
+    registerRiderPushToken(riderId: $riderId, expoPushToken: $expoPushToken) {
+      message
+    }
+  }
+`;
+
+// Same as above, for drivers (notification on new ride requests).
+export const REGISTER_DRIVER_PUSH_TOKEN = gql`
+  mutation RegisterDriverPushToken($driverId: ID!, $expoPushToken: String) {
+    registerDriverPushToken(driverId: $driverId, expoPushToken: $expoPushToken) {
+      message
+    }
+  }
+`;
+
 export const CREATE_RIDE = gql`
   mutation CreateRide(
     $riderId: ID
@@ -344,7 +363,11 @@ export const CREATE_RIDE = gql`
     $phoneNumber: String!
     $passengers: Int!
     $pickUp: String!
+    $pickUpLat: Float
+    $pickUpLng: Float
     $dropOff: String!
+    $dropOffLat: Float
+    $dropOffLng: Float
     $pickUpTime: String!
     $bidAmount: Int
     $requestedDriverIds: [ID]
@@ -355,7 +378,11 @@ export const CREATE_RIDE = gql`
       phoneNumber: $phoneNumber
       passengers: $passengers
       pickUp: $pickUp
+      pickUpLat: $pickUpLat
+      pickUpLng: $pickUpLng
       dropOff: $dropOff
+      dropOffLat: $dropOffLat
+      dropOffLng: $dropOffLng
       pickUpTime: $pickUpTime
       bidAmount: $bidAmount
       requestedDriverIds: $requestedDriverIds

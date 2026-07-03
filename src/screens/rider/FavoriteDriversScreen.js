@@ -18,7 +18,7 @@ import { GET_FAVORITE_DRIVERS, GET_AVAILABLE_DRIVERS } from '../../graphql/queri
 import { ADD_FAVORITE_DRIVER, REMOVE_FAVORITE_DRIVER } from '../../graphql/mutations';
 import { secondsToTimeString } from '../../utils/formatting';
 
-const FavoriteDriversScreen = () => {
+const FavoriteDriversScreen = ({ navigation }) => {
   const userId = useUserStore((state) => state.userId);
   const [showAvailable, setShowAvailable] = useState(false);
 
@@ -88,15 +88,24 @@ const FavoriteDriversScreen = () => {
   };
 
   const getAvailabilityText = (driver) => {
+    // `driverNextAvailableAt` is a Long (ms timestamp), not seconds.
     if (!driver.driverNextAvailableAt) return 'Now';
-    const now = Math.floor(Date.now() / 1000);
-    const diff = driver.driverNextAvailableAt - now;
-    if (diff <= 0) return 'Now';
-    return '~' + secondsToTimeString(diff);
+    const diffMs = driver.driverNextAvailableAt - Date.now();
+    if (diffMs <= 0) return 'Now';
+    return '~' + secondsToTimeString(Math.floor(diffMs / 1000));
   };
 
   const renderFavoriteDriver = ({ item: driver }) => (
-    <View style={styles.driverCard}>
+    // Card itself is tappable → opens driver profile.
+    // The heart button below is a nested Touchable, so taps on it are captured
+    // by the heart and DON'T bubble up to trigger navigation.
+    <TouchableOpacity
+      style={styles.driverCard}
+      activeOpacity={0.7}
+      onPress={() =>
+        navigation.navigate('DriverProfileView', { driverId: driver.id })
+      }
+    >
       <View style={styles.driverRow}>
         <View style={styles.driverAvatar}>
           <Text style={styles.driverInitial}>
@@ -124,8 +133,14 @@ const FavoriteDriversScreen = () => {
         >
           <Ionicons name="heart-dislike" size={20} color={colors.error.light} />
         </TouchableOpacity>
+        <Ionicons
+          name="chevron-forward"
+          size={18}
+          color={colors.gray[300]}
+          style={styles.chevron}
+        />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   if (favLoading) {
@@ -318,6 +333,9 @@ const styles = StyleSheet.create({
   },
   removeButton: {
     padding: 8,
+  },
+  chevron: {
+    marginLeft: 2,
   },
   addButton: {
     padding: 8,

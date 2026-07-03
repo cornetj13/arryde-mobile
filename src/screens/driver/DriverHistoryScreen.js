@@ -1,10 +1,19 @@
-import { View, Text, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  ActivityIndicator,
+  TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@apollo/client/react';
 import { colors } from '../../theme/colors';
 import { useUserStore } from '../../stores';
 import { GET_DRIVER_RIDE_HISTORY } from '../../graphql/queries';
+import RideHistoryDetailModal from '../../components/shared/RideHistoryDetailModal';
 
 const getStatusInfo = (ride) => {
   if (ride.isCompleted) return { label: 'Completed', color: colors.rider.dark, icon: 'checkmark-circle' };
@@ -14,12 +23,12 @@ const getStatusInfo = (ride) => {
   return { label: 'Unknown', color: colors.gray[400], icon: 'help-circle' };
 };
 
-const RideHistoryCard = ({ ride }) => {
+const RideHistoryCard = ({ ride, onPress }) => {
   const status = getStatusInfo(ride);
   const date = ride.date || (ride.createdAt ? new Date(parseInt(ride.createdAt)).toLocaleDateString() : '');
 
   return (
-    <View style={styles.rideCard}>
+    <TouchableOpacity style={styles.rideCard} activeOpacity={0.7} onPress={onPress}>
       <View style={styles.rideHeader}>
         <Text style={styles.rideDate}>{date}</Text>
         <View style={[styles.statusBadge, { backgroundColor: status.color + '15' }]}>
@@ -44,12 +53,13 @@ const RideHistoryCard = ({ ride }) => {
         <Text style={styles.metaText}>{ride.pickUpTime}</Text>
         {ride.bidAmount > 0 && <Text style={styles.metaBid}>${ride.bidAmount} bid</Text>}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 
 const DriverHistoryScreen = () => {
   const userId = useUserStore((state) => state.userId);
+  const [selectedRide, setSelectedRide] = useState(null);
 
   const { data, loading } = useQuery(GET_DRIVER_RIDE_HISTORY, {
     variables: { id: userId },
@@ -83,11 +93,20 @@ const DriverHistoryScreen = () => {
         <FlatList
           data={rides}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <RideHistoryCard ride={item} />}
+          renderItem={({ item }) => (
+            <RideHistoryCard ride={item} onPress={() => setSelectedRide(item)} />
+          )}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      <RideHistoryDetailModal
+        visible={!!selectedRide}
+        ride={selectedRide}
+        viewerRole="driver"
+        onClose={() => setSelectedRide(null)}
+      />
     </SafeAreaView>
   );
 };

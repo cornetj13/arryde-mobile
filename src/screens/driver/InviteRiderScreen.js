@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation } from '@apollo/client/react';
 import Toast from 'react-native-toast-message';
+import QRCode from 'react-native-qrcode-svg';
 import { colors } from '../../theme/colors';
 import { useUserStore } from '../../stores';
 import { GET_DRIVER_INVITE_CODE } from '../../graphql/queries';
@@ -29,6 +30,14 @@ const InviteRiderScreen = () => {
 
   const inviteCode = data?.getDriverInviteCode;
 
+  // The QR points new riders at the production web signup page, even from a dev
+  // build — anyone scanning the QR isn't an Arryde user yet, so they need a real
+  // browser URL. Swap to __DEV__ logic only if you specifically want to test the
+  // local signup flow via scan.
+  const inviteUrl = inviteCode?.code
+    ? `https://arryde.com/signup?invite=${inviteCode.code}`
+    : '';
+
   const handleGenerateCode = async () => {
     try {
       await generateCode({ variables: { driverId: userId } });
@@ -44,7 +53,7 @@ const InviteRiderScreen = () => {
 
     try {
       await Share.share({
-        message: `Join me on Arryde! Use my invite code: ${inviteCode.code}\n\nSign up and use this code to add me as your favorite driver.`,
+        message: `Join me on Arryde! Sign up here: ${inviteUrl}\n\nOr use my invite code: ${inviteCode.code}\n\nEither way, I'll be added to your favorite drivers list.`,
         title: 'Arryde Invite',
       });
     } catch (err) {
@@ -70,9 +79,21 @@ const InviteRiderScreen = () => {
           <ActivityIndicator size="large" color={colors.driver.dark} />
         ) : inviteCode ? (
           <View style={styles.codeSection}>
-            {/* Code Display */}
+            {/* Code Display + QR */}
             <View style={styles.codeCard}>
               <Text style={styles.codeLabel}>Your Invite Code</Text>
+
+              {inviteUrl ? (
+                <View style={styles.qrWrapper}>
+                  <QRCode
+                    value={inviteUrl}
+                    size={200}
+                    color={colors.driver.dark}
+                    backgroundColor={colors.white}
+                  />
+                </View>
+              ) : null}
+
               <Text style={styles.codeText}>{inviteCode.code}</Text>
               <Text style={styles.usageText}>
                 Used {inviteCode.usageCount} time{inviteCode.usageCount !== 1 ? 's' : ''}
@@ -195,6 +216,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  qrWrapper: {
+    backgroundColor: colors.white,
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.driver.light + '40',
+    marginVertical: 12,
   },
   codeText: {
     fontSize: 36,
