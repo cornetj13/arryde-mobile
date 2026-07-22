@@ -367,7 +367,9 @@ const DriverHomeScreen = ({ navigation }) => {
         <View style={styles.dutyCard}>
           <View style={styles.dutyInfo}>
             <View style={[styles.dutyDot, isOnDuty ? styles.dutyDotOn : styles.dutyDotOff]} />
-            <Text style={styles.dutyText}>{isOnDuty ? 'On Duty' : 'Off Duty'}</Text>
+            <Text style={[styles.dutyText, !isOnDuty && styles.dutyTextOff]}>
+              {isOnDuty ? 'On Duty' : 'Off Duty'}
+            </Text>
           </View>
           <TouchableOpacity
             style={[styles.dutyToggle, isOnDuty ? styles.dutyToggleOn : styles.dutyToggleOff]}
@@ -613,12 +615,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.rider.light,
   },
   dutyDotOff: {
-    backgroundColor: colors.gray[400],
+    backgroundColor: colors.error.light,
   },
   dutyText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.gray[900],
+  },
+  dutyTextOff: {
+    color: colors.error.dark,
   },
   dutyToggle: {
     paddingVertical: 10,

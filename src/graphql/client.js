@@ -29,17 +29,24 @@ import { Platform } from 'react-native';
 const DEV_LAN_IP = '10.0.0.188';
 const DEV_HOST = Platform.OS === 'web' ? 'localhost' : DEV_LAN_IP;
 
+// Set EXPO_PUBLIC_USE_PROD_API=true in .env to point a DEV session at the
+// production backend — for testing the mobile experience against live data
+// (e.g. alongside Dave) without a local backend or a matching LAN IP.
+// Restart with `npx expo start --clear` after changing it.
+const USE_PROD_API = process.env.EXPO_PUBLIC_USE_PROD_API === 'true';
+
 // Production URL is the original Railway subdomain from when the project
 // was called "Bellingham Rideshare" — kept rather than renamed to avoid
 // breaking the web app's existing prod config. Matches arryde-web's
 // VITE_API_GRAPHQL_URI in .env.production.
-const API_URL = __DEV__
-  ? `http://${DEV_HOST}:3001/graphql`
-  : 'https://rideshare-api-production.up.railway.app/graphql';
+const PROD_API_URL = 'https://rideshare-api-production.up.railway.app/graphql';
+const PROD_WS_URL = 'wss://rideshare-api-production.up.railway.app/graphql';
 
-const WS_URL = __DEV__
-  ? `ws://${DEV_HOST}:3001/graphql`
-  : 'wss://rideshare-api-production.up.railway.app/graphql';
+const API_URL =
+  __DEV__ && !USE_PROD_API ? `http://${DEV_HOST}:3001/graphql` : PROD_API_URL;
+
+const WS_URL =
+  __DEV__ && !USE_PROD_API ? `ws://${DEV_HOST}:3001/graphql` : PROD_WS_URL;
 
 /* ============================================
    GRAPHQL MUTATION DEFINITIONS (for internal use)

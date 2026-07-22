@@ -126,25 +126,19 @@ export const GET_SINGLE_DRIVER = gql`
   }
 `;
 
-// Get available drivers.
-export const GET_AVAILABLE_DRIVERS = gql`
-  query GetAvailableDrivers {
-    getAvailableDrivers {
+// Get ALL drivers (on and off duty). Used for the add-favorites list —
+// favoriting a driver must not depend on them being on duty right now.
+export const GET_ALL_DRIVERS = gql`
+  query GetAllDrivers {
+    getAllDrivers {
       id
-      email
       name
-      phoneNumber
-      licensePlate
       carMake
       carModel
       carColor
       isOnDuty
-      currentRideId
       riderQueue
       driverNextAvailableAt
-      profilePicture
-      createdAt
-      updatedAt
     }
   }
 `;

@@ -1,4 +1,5 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
@@ -11,6 +12,11 @@ import DriverProfileScreen from '../screens/driver/DriverProfileScreen';
 const Tab = createBottomTabNavigator();
 
 const DriverTabs = () => {
+  // Android edge-to-edge draws the app BEHIND the system navigation bar —
+  // extend the tab bar by the device's real bottom inset so the system
+  // buttons don't cover the tabs (see RiderTabs for details).
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -20,9 +26,9 @@ const DriverTabs = () => {
         tabBarStyle: {
           backgroundColor: colors.white,
           borderTopColor: colors.gray[200],
-          paddingBottom: 8,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
-          height: 65,
+          height: 65 + insets.bottom,
         },
         tabBarLabelStyle: {
           fontSize: 12,

@@ -1,4 +1,5 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
@@ -11,6 +12,12 @@ import RiderProfileScreen from '../screens/rider/RiderProfileScreen';
 const Tab = createBottomTabNavigator();
 
 const RiderTabs = () => {
+  // Android edge-to-edge draws the app BEHIND the system navigation bar
+  // (back/home/recents) — a hardcoded height/padding disables React
+  // Navigation's automatic safe-area handling, so the system buttons sat on
+  // top of the tabs. Extend the bar by the device's real bottom inset.
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -20,9 +27,9 @@ const RiderTabs = () => {
         tabBarStyle: {
           backgroundColor: colors.white,
           borderTopColor: colors.gray[200],
-          paddingBottom: 8,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
-          height: 65,
+          height: 65 + insets.bottom,
         },
         tabBarLabelStyle: {
           fontSize: 12,

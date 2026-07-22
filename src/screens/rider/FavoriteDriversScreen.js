@@ -14,7 +14,7 @@ import { useQuery, useMutation } from '@apollo/client/react';
 import Toast from 'react-native-toast-message';
 import { colors } from '../../theme/colors';
 import { useUserStore } from '../../stores';
-import { GET_FAVORITE_DRIVERS, GET_AVAILABLE_DRIVERS } from '../../graphql/queries';
+import { GET_FAVORITE_DRIVERS, GET_ALL_DRIVERS } from '../../graphql/queries';
 import { ADD_FAVORITE_DRIVER, REMOVE_FAVORITE_DRIVER } from '../../graphql/mutations';
 import { secondsToTimeString } from '../../utils/formatting';
 
@@ -32,10 +32,12 @@ const FavoriteDriversScreen = ({ navigation }) => {
     fetchPolicy: 'network-only',
   });
 
+  // ALL drivers, not just on-duty — you can favorite a driver who's off
+  // duty right now (being logged in ≠ being on duty).
   const {
     data: availData,
     loading: availLoading,
-  } = useQuery(GET_AVAILABLE_DRIVERS, {
+  } = useQuery(GET_ALL_DRIVERS, {
     skip: !showAvailable,
     fetchPolicy: 'network-only',
   });
@@ -44,11 +46,13 @@ const FavoriteDriversScreen = ({ navigation }) => {
   const [removeFavorite] = useMutation(REMOVE_FAVORITE_DRIVER);
 
   const favoriteDrivers = favData?.getFavoriteDrivers || [];
-  const availableDrivers = availData?.getAvailableDrivers || [];
+  const allDrivers = availData?.getAllDrivers || [];
   const favoriteIds = favoriteDrivers.map((d) => d.id);
 
-  // Filter available drivers that aren't already favorites
-  const nonFavoriteAvailable = availableDrivers.filter((d) => !favoriteIds.includes(d.id));
+  // Drivers not already favorited, on-duty ones first
+  const nonFavoriteAvailable = allDrivers
+    .filter((d) => !favoriteIds.includes(d.id))
+    .sort((a, b) => (b.isOnDuty === true) - (a.isOnDuty === true));
 
   const handleRemoveFavorite = async (driverId, driverName) => {
     Alert.alert(
@@ -190,7 +194,7 @@ const FavoriteDriversScreen = ({ navigation }) => {
                   color={colors.rider.dark}
                 />
                 <Text style={styles.addMoreText}>
-                  {showAvailable ? 'Hide Available Drivers' : 'Add More Drivers'}
+                  {showAvailable ? 'Hide Drivers' : 'Add More Drivers'}
                 </Text>
               </TouchableOpacity>
             }
@@ -201,11 +205,11 @@ const FavoriteDriversScreen = ({ navigation }) => {
       {/* Available Drivers Section */}
       {showAvailable && (
         <View style={styles.availableSection}>
-          <Text style={styles.sectionTitle}>Available Drivers</Text>
+          <Text style={styles.sectionTitle}>All Drivers</Text>
           {availLoading ? (
             <ActivityIndicator color={colors.rider.dark} style={{ padding: 20 }} />
           ) : nonFavoriteAvailable.length === 0 ? (
-            <Text style={styles.noDriversText}>No additional drivers available</Text>
+            <Text style={styles.noDriversText}>No other drivers to add</Text>
           ) : (
             <FlatList
               data={nonFavoriteAvailable}
@@ -219,10 +223,22 @@ const FavoriteDriversScreen = ({ navigation }) => {
                       </Text>
                     </View>
                     <View style={styles.driverInfo}>
-                      <Text style={styles.driverName}>{driver.name}</Text>
-                      <Text style={styles.metaText}>
-                        Queue: {driver.riderQueue || 0} | Available: {getAvailabilityText(driver)}
-                      </Text>
+                      <View style={styles.driverNameRow}>
+                        <Text style={styles.driverName}>{driver.name}</Text>
+                        <View
+                          style={[
+                            styles.statusDot,
+                            driver.isOnDuty ? styles.dotOn : styles.dotOff,
+                          ]}
+                        />
+                      </View>
+                      {driver.isOnDuty ? (
+                        <Text style={styles.metaText}>
+                          Queue: {driver.riderQueue || 0} | Available: {getAvailabilityText(driver)}
+                        </Text>
+                      ) : (
+                        <Text style={styles.offDutyText}>Off Duty</Text>
+                      )}
                     </View>
                     <TouchableOpacity
                       style={styles.addButton}
