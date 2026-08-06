@@ -83,6 +83,13 @@ const WaitingForRideScreen = ({ navigation, route }) => {
   useFocusEffect(
     useCallback(() => {
       syncRideStatus();
+
+      // Safety net: with the app in the FOREGROUND nothing else re-checks,
+      // so a dropped socket would leave the rider stuck on "Searching for
+      // drivers..." forever. Poll while focused so an acceptance surfaces
+      // within ~15s regardless of socket health.
+      const id = setInterval(syncRideStatus, 15000);
+      return () => clearInterval(id);
     }, [syncRideStatus])
   );
 

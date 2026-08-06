@@ -77,6 +77,14 @@ const PickupInfoScreen = ({ navigation, route }) => {
   useFocusEffect(
     useCallback(() => {
       syncRideStatus();
+
+      // Safety net: with the app in the FOREGROUND, neither the focus nor
+      // the AppState check fires again, so a dropped socket would strand the
+      // rider on this screen indefinitely (exactly what happened in
+      // testing). Poll while the screen is focused so a missed
+      // completion/cancellation surfaces within ~15s regardless.
+      const id = setInterval(syncRideStatus, 15000);
+      return () => clearInterval(id);
     }, [syncRideStatus])
   );
 

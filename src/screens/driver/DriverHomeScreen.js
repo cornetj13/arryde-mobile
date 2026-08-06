@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -33,9 +33,15 @@ import {
 import { secureStorage } from '../../utils/secureStorage';
 import { secondsToTimeString } from '../../utils/formatting';
 import RideStatusModal from '../../components/driver/RideStatusModal';
+import CollapsibleSection from '../../components/shared/CollapsibleSection';
 
 const DriverHomeScreen = ({ navigation }) => {
-  const [activeTab, setActiveTab] = useState('requests');
+  // Both lists start COLLAPSED; a section pulses green when its contents
+  // change while closed (see the change-detection effect below).
+  const [requestsOpen, setRequestsOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const [requestsChanged, setRequestsChanged] = useState(false);
+  const [queueChanged, setQueueChanged] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   // Modal shown after a ride completes (this driver tapped Complete) or gets
@@ -183,6 +189,48 @@ const DriverHomeScreen = ({ navigation }) => {
 
   const activeRides = activeRidesData?.getActiveRides || [];
   const acceptedRides = acceptedRidesData?.getAcceptedRides || [];
+
+  // Flag a section as "changed" when its membership shifts while collapsed.
+  // Signatures (sorted id lists) mean a refetch returning the same rides in a
+  // different order doesn't count as a change. Opening a section clears its
+  // flag — the driver has now seen it.
+  const requestsSignature = activeRides
+    .map((r) => r.id)
+    .sort()
+    .join(',');
+  const queueSignature = acceptedRides
+    .map((r) => r.id)
+    .sort()
+    .join(',');
+
+  const prevRequestsRef = useRef(requestsSignature);
+  const prevQueueRef = useRef(queueSignature);
+
+  useEffect(() => {
+    if (prevRequestsRef.current === requestsSignature) return;
+    prevRequestsRef.current = requestsSignature;
+    if (!requestsOpen) setRequestsChanged(true);
+  }, [requestsSignature, requestsOpen]);
+
+  useEffect(() => {
+    if (prevQueueRef.current === queueSignature) return;
+    prevQueueRef.current = queueSignature;
+    if (!queueOpen) setQueueChanged(true);
+  }, [queueSignature, queueOpen]);
+
+  const toggleRequests = () => {
+    setRequestsOpen((open) => {
+      if (!open) setRequestsChanged(false);
+      return !open;
+    });
+  };
+
+  const toggleQueue = () => {
+    setQueueOpen((open) => {
+      if (!open) setQueueChanged(false);
+      return !open;
+    });
+  };
 
   const handleToggleDuty = async () => {
     try {
@@ -430,29 +478,15 @@ const DriverHomeScreen = ({ navigation }) => {
           <Text style={styles.queueValue}>{riderQueue}</Text>
         </View>
 
-        {/* Tab Bar */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'requests' && styles.tabActive]}
-            onPress={() => setActiveTab('requests')}
-          >
-            <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>
-              Ride Requests ({activeRides.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'queue' && styles.tabActive]}
-            onPress={() => setActiveTab('queue')}
-          >
-            <Text style={[styles.tabText, activeTab === 'queue' && styles.tabTextActive]}>
-              Your Queue ({acceptedRides.length})
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Content */}
-        {activeTab === 'requests' ? (
-          activeRides.length === 0 ? (
+        {/* Ride Requests — collapsed by default, pulses green on change */}
+        <CollapsibleSection
+          title="Ride Requests"
+          count={activeRides.length}
+          expanded={requestsOpen}
+          onToggle={toggleRequests}
+          hasUpdate={requestsChanged}
+        >
+          {activeRides.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="car-outline" size={48} color={colors.gray[300]} />
               <Text style={styles.emptyText}>
@@ -492,14 +526,24 @@ const DriverHomeScreen = ({ navigation }) => {
                 )}
               </View>
             ))
-          )
-        ) : acceptedRides.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="list-outline" size={48} color={colors.gray[300]} />
-            <Text style={styles.emptyText}>No rides in your queue</Text>
-          </View>
-        ) : (
-          acceptedRides.map((ride, index) => (
+          )}
+        </CollapsibleSection>
+
+        {/* Your Queue — collapsed by default, pulses green on change */}
+        <CollapsibleSection
+          title="Your Queue"
+          count={acceptedRides.length}
+          expanded={queueOpen}
+          onToggle={toggleQueue}
+          hasUpdate={queueChanged}
+        >
+          {acceptedRides.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="list-outline" size={48} color={colors.gray[300]} />
+              <Text style={styles.emptyText}>No rides in your queue</Text>
+            </View>
+          ) : (
+            acceptedRides.map((ride, index) => (
             <View key={ride.id} style={styles.rideCard}>
               <View style={styles.rideCardHeader}>
                 <View style={styles.queueBadge}>
@@ -530,8 +574,9 @@ const DriverHomeScreen = ({ navigation }) => {
                 </TouchableOpacity>
               </View>
             </View>
-          ))
-        )}
+            ))
+          )}
+        </CollapsibleSection>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -730,35 +775,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     color: colors.driver.dark,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: colors.gray[100],
-    borderRadius: 10,
-    padding: 4,
-    marginBottom: 16,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  tabActive: {
-    backgroundColor: colors.white,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.gray[500],
-  },
-  tabTextActive: {
-    color: colors.gray[900],
   },
   emptyState: {
     alignItems: 'center',

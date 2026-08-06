@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   Observable,
   ApolloClient,
@@ -96,11 +96,15 @@ const LOGOUT_DRIVER = gql`
    HELPER FUNCTIONS
    ============================================ */
 
-// Decode base64 for JWT (React Native compatible)
-const decodeBase64 = (str) => {
+// Decode base64 for JWT (React Native compatible).
+// JWTs are base64URL encoded — convert to standard base64 first (the old
+// sanitizer stripped '-' and '_' outright, corrupting the payload).
+const decodeBase64 = (rawStr) => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
   let output = '';
   let i = 0;
+  let str = rawStr.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4 !== 0) str += '=';
   const input = str.replace(/[^A-Za-z0-9+/=]/g, '');
 
   while (i < input.length) {
@@ -121,14 +125,15 @@ const decodeBase64 = (str) => {
   return output;
 };
 
-// Check if the token is expired
-const isTokenExpired = (accessToken) => {
+// Check if the token is expired. `leewaySeconds` treats a token as expired
+// slightly early so we never present one that dies in transit.
+const isTokenExpired = (accessToken, leewaySeconds = 30) => {
   if (!accessToken) return true;
 
   try {
     const decoded = JSON.parse(decodeBase64(accessToken.split('.')[1]));
     const currentTime = Date.now() / 1000;
-    return decoded.exp < currentTime;
+    return decoded.exp < currentTime + leewaySeconds;
   } catch {
     return true;
   }
@@ -137,6 +142,48 @@ const isTokenExpired = (accessToken) => {
 // Helper to get current auth state
 const getAuthState = () => useAuthStore.getState();
 const getUserState = () => useUserStore.getState();
+
+/* ============================================
+   WEBSOCKET CLIENT (module scope — created once)
+   ============================================ */
+
+// The server verifies the JWT at connect time and REJECTS invalid tokens —
+// graphql-ws treats that rejection as fatal and stops retrying, killing
+// every subscription (even the public ones). Two rules keep the socket
+// alive and correctly identified:
+//   1. NEVER present an expired token — connect anonymously instead (the
+//      server allows token-less connections; they get public events).
+//   2. Restart the socket whenever the access token changes (login, logout,
+//      refresh) — connectionParams are only read at connect time, and
+//      subscription filters use the identity the socket connected with.
+const wsClient = createClient({
+  url: WS_URL,
+  retryAttempts: 5,
+  retryWait: async (retries) => {
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(1000 * Math.pow(2, retries), 10000))
+    );
+  },
+  connectionParams: () => {
+    const { accessToken } = getAuthState();
+    if (accessToken && !isTokenExpired(accessToken)) {
+      return { authorization: `Bearer ${accessToken}` };
+    }
+    return {};
+  },
+});
+
+let lastWsToken = null;
+useAuthStore.subscribe((state) => {
+  const token = state.accessToken ?? null;
+  if (token === lastWsToken) return;
+  lastWsToken = token;
+  try {
+    wsClient.restart();
+  } catch (e) {
+    // Socket not connected yet — nothing to restart.
+  }
+});
 
 /* ============================================
    APOLLO CLIENT SETUP
@@ -162,22 +209,8 @@ const useApollo = () => {
     // No credentials: 'include' — mobile doesn't use cookies
   });
 
-  // WebSocket link
-  const wsLink = new GraphQLWsLink(
-    createClient({
-      url: WS_URL,
-      retryAttempts: 5,
-      retryWait: async (retries) => {
-        await new Promise((resolve) =>
-          setTimeout(resolve, Math.min(1000 * Math.pow(2, retries), 10000))
-        );
-      },
-      connectionParams: () => {
-        const { accessToken } = getAuthState();
-        return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
-      },
-    })
-  );
+  // WebSocket link (wraps the module-scope wsClient above)
+  const wsLink = new GraphQLWsLink(wsClient);
 
   // Auth link — attaches JWT and refresh token headers
   const authLink = new ApolloLink((operation, forward) => {
@@ -389,6 +422,26 @@ const useApollo = () => {
       },
     });
   }, []);
+
+  // Bootstrap: a cold start restores a persisted session whose access token
+  // (10 min TTL) is almost always expired. Without a proactive refresh, the
+  // WebSocket connects anonymously and filtered subscriptions stay silent
+  // until some HTTP query happens to 401. Refresh immediately; the auth
+  // store subscriber then restarts the socket with the fresh identity.
+  useEffect(() => {
+    const { isAuth, accessToken } = getAuthState();
+    if (!isAuth || !isTokenExpired(accessToken)) return;
+
+    refreshAccessToken(client)
+      .then((data) => {
+        if (data?.accessToken) setAccessToken(data.accessToken);
+      })
+      .catch(() => {
+        // Dead session — refreshAccessToken already force-logs-out on the
+        // fatal codes; anything else just stays logged out gracefully.
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client]);
 
   return client;
 };
