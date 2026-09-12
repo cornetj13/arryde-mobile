@@ -279,13 +279,13 @@ const useApollo = () => {
 
         return data.refreshAccessTokenRider || data.refreshAccessTokenDriver;
       } catch (error) {
+        // Codes the backend actually throws for a dead session — the only
+        // way forward is a fresh login.
         const serverErrors = [
-          'REFRESH_ACCESS_TOKEN_ERROR',
           'NO_REFRESH_TOKEN',
-          'INVALID_REFRESH_TOKEN',
-          'MISMATCHED_USER',
           'SESSION_INVALIDATED',
           'INVALID_TOKEN',
+          'REFRESH_ACCESS_TOKEN_ERROR',
         ];
 
         // Apollo Client v4: GraphQL errors arrive wrapped in CombinedGraphQLErrors,

@@ -39,13 +39,22 @@ const handleNotificationTap = (response) => {
     const data = response?.notification?.request?.content?.data;
     if (!data || !navigationRef.isReady()) return;
 
+    // Only follow a push into a flow the signed-in role actually has. A
+    // stale rider push tapped while logged in as a driver (or vice versa)
+    // would otherwise target a screen that isn't in the current navigator.
+    const { isAuth } = useAuthStore.getState();
+    const { userType } = useUserStore.getState();
+    if (!isAuth) return;
+
     if (data.action === 'REQUEST_RIDE' && data.driverId) {
+      if (userType !== 'rider') return;
       // Rider tapping a "your favorite is on duty" push → straight into the
       // ride request form with that driver pre-selected.
       navigationRef.navigate('FindRide', {
         prefillRide: { requestedDriverIds: [String(data.driverId)] },
       });
     } else if (data.action === 'NEW_RIDE_REQUEST') {
+      if (userType !== 'driver') return;
       // Driver tapping a "new ride request" push → jump to the driver home,
       // which defaults to the Requests tab so the new request is visible.
       navigationRef.navigate('DriverTabs', { screen: 'DriverHome' });

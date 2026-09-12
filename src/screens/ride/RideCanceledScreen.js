@@ -41,7 +41,11 @@ const RideCanceledScreen = ({ navigation, route }) => {
         passengers: ride.passengers,
         pickUpTime: ride.pickUpTime,
         pickUp: ride.pickUp,
+        pickUpLat: ride.pickUpLat ?? null,
+        pickUpLng: ride.pickUpLng ?? null,
         dropOff: ride.dropOff,
+        dropOffLat: ride.dropOffLat ?? null,
+        dropOffLng: ride.dropOffLng ?? null,
         bidAmount: ride.bidAmount || 0,
         requestedDriverIds: ride.requestedDriverIds || [],
       };

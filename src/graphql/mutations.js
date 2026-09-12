@@ -320,7 +320,11 @@ export const CREATE_RIDE = gql`
       phoneNumber
       passengers
       pickUp
+      pickUpLat
+      pickUpLng
       dropOff
+      dropOffLat
+      dropOffLng
       pickUpTime
       date
       bidAmount
