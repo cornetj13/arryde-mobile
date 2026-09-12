@@ -198,6 +198,20 @@ const LoginScreen = ({ navigation }) => {
                 </Text>
               )}
             </TouchableOpacity>
+
+            {/* Forgot Password — carries the current account type and any
+                typed email through, so the user doesn't retype them. */}
+            <TouchableOpacity
+              style={styles.forgotButton}
+              onPress={() =>
+                navigation.navigate('ForgotPassword', {
+                  userType,
+                  email: email.trim(),
+                })
+              }
+            >
+              <Text style={styles.forgotText}>Forgot Password?</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -206,6 +220,16 @@ const LoginScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
+  forgotButton: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  forgotText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.gray[600],
+    textDecorationLine: 'underline',
+  },
   container: {
     flex: 1,
     backgroundColor: colors.rider.dark,

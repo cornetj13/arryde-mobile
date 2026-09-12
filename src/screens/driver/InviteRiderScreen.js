@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,17 @@ import { useQuery, useMutation } from '@apollo/client/react';
 import Toast from 'react-native-toast-message';
 import QRCode from 'react-native-qrcode-svg';
 import { colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { useUserStore } from '../../stores';
 import { GET_DRIVER_INVITE_CODE } from '../../graphql/queries';
 import { GENERATE_INVITE_CODE } from '../../graphql/mutations';
 
 const InviteRiderScreen = () => {
+  // Theme-aware palette; `colors` shadows the module import so all
+  // existing JSX and styles below pick up light/dark automatically.
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const userId = useUserStore((state) => state.userId);
   const userName = useUserStore((state) => state.userName);
 
@@ -156,7 +162,8 @@ const InviteRiderScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.gray[50],

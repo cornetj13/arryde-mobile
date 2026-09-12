@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@apollo/client/react';
 import { colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { useUserStore } from '../../stores';
 import { GET_DRIVER_RIDE_HISTORY } from '../../graphql/queries';
 import RideHistoryDetailModal from '../../components/shared/RideHistoryDetailModal';
@@ -58,6 +59,11 @@ const RideHistoryCard = ({ ride, onPress }) => {
 };
 
 const DriverHistoryScreen = () => {
+  // Theme-aware palette; `colors` shadows the module import so all
+  // existing JSX and styles below pick up light/dark automatically.
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const userId = useUserStore((state) => state.userId);
   const [selectedRide, setSelectedRide] = useState(null);
 
@@ -111,7 +117,8 @@ const DriverHistoryScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.gray[50],

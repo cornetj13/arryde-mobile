@@ -389,3 +389,24 @@ export const GENERATE_INVITE_CODE = gql`
     }
   }
 `;
+
+// ============ PASSWORD RESET ============
+// Requests a reset email. The backend returns the same message whether or not
+// the account exists (anti-enumeration). The emailed link opens the web reset
+// page, which is where the new password is actually set.
+
+export const FORGOT_PASSWORD_RIDER = gql`
+  mutation ForgotPasswordRider($email: EmailAddress!) {
+    forgotPasswordRider(email: $email) {
+      message
+    }
+  }
+`;
+
+export const FORGOT_PASSWORD_DRIVER = gql`
+  mutation ForgotPasswordDriver($email: EmailAddress!) {
+    forgotPasswordDriver(email: $email) {
+      message
+    }
+  }
+`;

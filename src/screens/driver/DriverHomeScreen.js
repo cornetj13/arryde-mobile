@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useSubscription } from '@apollo/client/react';
 import Toast from 'react-native-toast-message';
 import { colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { useAuthStore, useUserStore, useDriverStore, useRideStore } from '../../stores';
 import {
   LOGOUT_DRIVER,
@@ -36,6 +37,11 @@ import RideStatusModal from '../../components/driver/RideStatusModal';
 import CollapsibleSection from '../../components/shared/CollapsibleSection';
 
 const DriverHomeScreen = ({ navigation }) => {
+  // Theme-aware palette; `colors` shadows the module import so all
+  // existing JSX and styles below pick up light/dark automatically.
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   // Both lists start COLLAPSED; a section pulses green when its contents
   // change while closed (see the change-detection effect below).
   const [requestsOpen, setRequestsOpen] = useState(false);
@@ -593,7 +599,8 @@ const DriverHomeScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.driver.dark,

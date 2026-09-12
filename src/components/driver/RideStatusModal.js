@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 
 /**
  * Modal shown to the driver after a ride completes or gets canceled by the rider.
@@ -21,6 +22,9 @@ import { colors } from '../../theme/colors';
  *  - onTimeChange: (minutes: number) => void    (-5, -1, 0=reset, +1, +5)
  */
 const RideStatusModal = ({ visible, eventType, riderName, onClose, onTimeChange }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   // Never render anything for an unknown eventType, even when toggled visible.
   if (!eventType) return null;
 
@@ -112,7 +116,8 @@ const RideStatusModal = ({ visible, eventType, riderName, onClose, onTimeChange 
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',

@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 
 /*
   Collapsible list section for the driver dashboard.
@@ -18,6 +19,9 @@ const CollapsibleSection = ({
   hasUpdate = false,
   children,
 }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -50,14 +54,16 @@ const CollapsibleSection = ({
     };
   }, [hasUpdate, expanded, pulse]);
 
+  // Resting colors come from the theme so the header doesn't flash white in
+  // dark mode; the pulse target stays brand green in both modes.
   const backgroundColor = pulse.interpolate({
     inputRange: [0, 1],
-    outputRange: ['rgba(255,255,255,1)', 'rgba(78,167,1,0.30)'],
+    outputRange: [colors.surface, 'rgba(78,167,1,0.30)'],
   });
 
   const borderColor = pulse.interpolate({
     inputRange: [0, 1],
-    outputRange: ['rgba(229,231,235,1)', 'rgba(78,167,1,0.85)'],
+    outputRange: [colors.border, 'rgba(78,167,1,0.85)'],
   });
 
   const showDot = hasUpdate && !expanded;
@@ -86,7 +92,8 @@ const CollapsibleSection = ({
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   section: {
     marginBottom: 12,
   },

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,15 +9,22 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation } from '@apollo/client/react';
 import Toast from 'react-native-toast-message';
 import { colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { useUserStore } from '../../stores';
 import { GET_SINGLE_DRIVER } from '../../graphql/queries';
 import { UPDATE_DRIVER } from '../../graphql/mutations';
 import { formatPhone } from '../../utils/formatting';
 
 const DriverProfileScreen = () => {
+  // Theme-aware palette; `colors` shadows the module import so all
+  // existing JSX and styles below pick up light/dark automatically.
+  const { colors, mode, setMode } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const userId = useUserStore((state) => state.userId);
   const setUserName = useUserStore((state) => state.setUserName);
 
@@ -194,6 +201,50 @@ const DriverProfileScreen = () => {
           </View>
         </View>
 
+        {/* Appearance — dark mode matters for night driving, where the
+            default light UI is uncomfortably bright. */}
+        <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>
+          Appearance
+        </Text>
+        <View style={styles.card}>
+          <View style={[styles.fieldRow, { borderBottomWidth: 0, flexDirection: 'column', alignItems: 'stretch' }]}>
+            <Text style={[styles.fieldLabel, { marginBottom: 10 }]}>Theme</Text>
+            <View style={styles.themeToggle}>
+              {[
+                { key: 'light', label: 'Light', icon: 'sunny-outline' },
+                { key: 'dark', label: 'Dark', icon: 'moon-outline' },
+                { key: 'system', label: 'Auto', icon: 'phone-portrait-outline' },
+              ].map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[
+                    styles.themeOption,
+                    mode === opt.key && styles.themeOptionActive,
+                  ]}
+                  onPress={() => setMode(opt.key)}
+                >
+                  <Ionicons
+                    name={opt.icon}
+                    size={18}
+                    color={mode === opt.key ? colors.driver.light : colors.gray[500]}
+                  />
+                  <Text
+                    style={[
+                      styles.themeOptionText,
+                      mode === opt.key && styles.themeOptionTextActive,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.themeHint}>
+              "Auto" follows your phone's own light/dark setting.
+            </Text>
+          </View>
+        </View>
+
         {editing && (
           <TouchableOpacity
             style={styles.cancelEditButton}
@@ -219,7 +270,8 @@ const DriverProfileScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.gray[50],
@@ -293,6 +345,40 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  themeToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.gray[100],
+    borderRadius: 10,
+    padding: 4,
+    gap: 4,
+  },
+  themeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  themeOptionActive: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.driver.light,
+  },
+  themeOptionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.gray[500],
+  },
+  themeOptionTextActive: {
+    color: colors.gray[900],
+  },
+  themeHint: {
+    fontSize: 12,
+    color: colors.gray[400],
+    marginTop: 8,
   },
   sectionTitle: {
     fontSize: 17,
