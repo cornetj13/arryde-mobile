@@ -26,7 +26,7 @@ import { secureStorage } from '../utils/secureStorage';
 // NOTE: Update DEV_LAN_IP when your LAN IP changes (check `npx expo start` output).
 import { Platform } from 'react-native';
 
-const DEV_LAN_IP = '10.0.0.188';
+const DEV_LAN_IP = '10.0.0.189';
 const DEV_HOST = Platform.OS === 'web' ? 'localhost' : DEV_LAN_IP;
 
 // Set EXPO_PUBLIC_USE_PROD_API=true in .env to point a DEV session at the
