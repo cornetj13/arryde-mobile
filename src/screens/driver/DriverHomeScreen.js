@@ -15,6 +15,7 @@ import { useMutation, useQuery, useSubscription } from '@apollo/client/react';
 import Toast from 'react-native-toast-message';
 import { colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
+import DutyToggle from '../../components/shared/DutyToggle';
 import { useAuthStore, useUserStore, useDriverStore, useRideStore } from '../../stores';
 import {
   LOGOUT_DRIVER,
@@ -417,27 +418,26 @@ const DriverHomeScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Duty Toggle */}
+        {/* Duty status + slider. The status line reads at a glance; the
+            slider below it is the control (tap anywhere on it to flip). */}
         <View style={styles.dutyCard}>
-          <View style={styles.dutyInfo}>
-            <View style={[styles.dutyDot, isOnDuty ? styles.dutyDotOn : styles.dutyDotOff]} />
-            <Text style={[styles.dutyText, !isOnDuty && styles.dutyTextOff]}>
-              {isOnDuty ? 'On Duty' : 'Off Duty'}
+          <View style={styles.dutyStatusRow}>
+            <Text style={styles.dutyStatusLabel}>Status</Text>
+            <Text
+              style={[
+                styles.dutyStatusValue,
+                isOnDuty ? styles.dutyStatusOn : styles.dutyStatusOff,
+              ]}
+            >
+              {isOnDuty ? 'ON DUTY' : 'OFF DUTY'}
             </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.dutyToggle, isOnDuty ? styles.dutyToggleOn : styles.dutyToggleOff]}
-            onPress={handleToggleDuty}
-            disabled={dutyLoading}
-          >
-            {dutyLoading ? (
-              <ActivityIndicator color={colors.white} size="small" />
-            ) : (
-              <Text style={styles.dutyToggleText}>
-                {isOnDuty ? 'Go Off Duty' : 'Go On Duty'}
-              </Text>
-            )}
-          </TouchableOpacity>
+          <DutyToggle isOnDuty={isOnDuty} onToggle={handleToggleDuty} loading={dutyLoading} />
+          <Text style={styles.dutyHint}>
+            {isOnDuty
+              ? 'Riders can see you and send requests.'
+              : 'Slide to go on duty and start receiving requests.'}
+          </Text>
         </View>
 
         {/* Availability Card — live timer + adjust controls */}
@@ -643,9 +643,6 @@ const makeStyles = (colors) =>
     backgroundColor: colors.white,
     borderRadius: 14,
     padding: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 16,
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 2 },
@@ -653,45 +650,35 @@ const makeStyles = (colors) =>
     shadowRadius: 8,
     elevation: 2,
   },
-  dutyInfo: {
+  dutyStatusRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 12,
   },
-  dutyDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  dutyDotOn: {
-    backgroundColor: colors.rider.light,
-  },
-  dutyDotOff: {
-    backgroundColor: colors.error.light,
-  },
-  dutyText: {
-    fontSize: 16,
+  dutyStatusLabel: {
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.gray[900],
+    color: colors.gray[500],
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
-  dutyTextOff: {
-    color: colors.error.dark,
+  dutyStatusValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
-  dutyToggle: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
+  dutyStatusOn: {
+    color: colors.rider.light,
   },
-  dutyToggleOn: {
-    backgroundColor: colors.gray[600],
+  dutyStatusOff: {
+    color: colors.error.light,
   },
-  dutyToggleOff: {
-    backgroundColor: colors.rider.dark,
-  },
-  dutyToggleText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: '600',
+  dutyHint: {
+    marginTop: 10,
+    fontSize: 13,
+    color: colors.gray[500],
+    textAlign: 'center',
   },
   availabilityCard: {
     backgroundColor: colors.white,
