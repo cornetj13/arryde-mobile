@@ -32,6 +32,7 @@ export const GET_SINGLE_RIDER = gql`
         carMake
         carModel
         carColor
+        seats
         isOnDuty
         riderQueue
         driverNextAvailableAt
@@ -55,6 +56,7 @@ export const GET_FAVORITE_DRIVERS = gql`
       carMake
       carModel
       carColor
+      seats
       isOnDuty
       riderQueue
       driverNextAvailableAt
@@ -111,6 +113,7 @@ export const GET_SINGLE_DRIVER = gql`
       carMake
       carModel
       carColor
+      seats
       isOnDuty
       currentRideId
       riderQueue
@@ -136,6 +139,7 @@ export const GET_ALL_DRIVERS = gql`
       carMake
       carModel
       carColor
+      seats
       isOnDuty
       riderQueue
       driverNextAvailableAt
@@ -197,6 +201,10 @@ export const GET_SINGLE_RIDE = gql`
       date
       bidAmount
       waitingTime
+      queuePosition
+      tripDistanceMeters
+      tripDurationSeconds
+      tripEstimateSource
       requestedDriverIds
       driverId
       driverName
@@ -225,11 +233,19 @@ export const GET_ACTIVE_RIDES = gql`
       phoneNumber
       passengers
       pickUp
+      pickUpLat
+      pickUpLng
       dropOff
+      dropOffLat
+      dropOffLng
       pickUpTime
       date
       bidAmount
       waitingTime
+      queuePosition
+      tripDistanceMeters
+      tripDurationSeconds
+      tripEstimateSource
       requestedDriverIds
       driverId
       driverName
@@ -255,11 +271,19 @@ export const GET_ACCEPTED_RIDES = gql`
       phoneNumber
       passengers
       pickUp
+      pickUpLat
+      pickUpLng
       dropOff
+      dropOffLat
+      dropOffLng
       pickUpTime
       date
       bidAmount
       waitingTime
+      queuePosition
+      tripDistanceMeters
+      tripDurationSeconds
+      tripEstimateSource
       driverId
       driverName
       isRequested
@@ -291,3 +315,16 @@ export const GET_DRIVER_INVITE_CODE = gql`
   }
 `;
 
+
+// Driving distance/time between two points. The server answers with Google
+// when it has a key, straight-line × road factor otherwise (source says
+// which). Drivers use it for "2.1 mi · 7 min to pickup".
+export const GET_DRIVE_ESTIMATE = gql`
+  query GetDriveEstimate($originLat: Float!, $originLng: Float!, $destLat: Float!, $destLng: Float!) {
+    getDriveEstimate(originLat: $originLat, originLng: $originLng, destLat: $destLat, destLng: $destLng) {
+      distanceMeters
+      durationSeconds
+      source
+    }
+  }
+`;

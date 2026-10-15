@@ -36,6 +36,8 @@ import { secureStorage } from '../../utils/secureStorage';
 import { secondsToTimeString } from '../../utils/formatting';
 import RideStatusModal from '../../components/driver/RideStatusModal';
 import CollapsibleSection from '../../components/shared/CollapsibleSection';
+import RideEstimates from '../../components/shared/RideEstimates';
+import { useDriverPosition } from '../../hooks/useDriverPosition';
 
 const DriverHomeScreen = ({ navigation }) => {
   // Theme-aware palette; `colors` shadows the module import so all
@@ -77,6 +79,10 @@ const DriverHomeScreen = ({ navigation }) => {
   const [updateDutyStatus, { loading: dutyLoading }] = useMutation(UPDATE_DRIVER_IS_ON_DUTY);
   const [updateRideStatus] = useMutation(UPDATE_RIDE_STATUS);
   const [updateDriverNextAvailable] = useMutation(UPDATE_DRIVER_NEXT_AVAILABLE_AT);
+
+  // Where the driver is — for "X mi · Y min to pickup" on each card. While
+  // on duty it is also published so riders can see the car approaching.
+  const driverPosition = useDriverPosition({ userId, isOnDuty });
 
   // Fetch driver data
   const { data: driverData } = useQuery(GET_SINGLE_DRIVER, {
@@ -506,7 +512,7 @@ const DriverHomeScreen = ({ navigation }) => {
                   <Text style={styles.riderName}>{ride.riderName}</Text>
                   {ride.bidAmount > 0 && (
                     <View style={styles.bidTag}>
-                      <Text style={styles.bidTagText}>${ride.bidAmount}</Text>
+                      <Text style={styles.bidTagText}>${ride.bidAmount} tip</Text>
                     </View>
                   )}
                 </View>
@@ -518,6 +524,7 @@ const DriverHomeScreen = ({ navigation }) => {
                   <View style={[styles.dot, { backgroundColor: colors.error.light }]} />
                   <Text style={styles.locationText} numberOfLines={1}>{ride.dropOff}</Text>
                 </View>
+                <RideEstimates ride={ride} driverPosition={driverPosition} />
                 <View style={styles.rideCardMeta}>
                   <Text style={styles.metaText}>{ride.passengers} passenger{ride.passengers > 1 ? 's' : ''}</Text>
                   <Text style={styles.metaText}>{ride.pickUpTime}</Text>
@@ -565,6 +572,7 @@ const DriverHomeScreen = ({ navigation }) => {
                 <View style={[styles.dot, { backgroundColor: colors.error.light }]} />
                 <Text style={styles.locationText} numberOfLines={1}>{ride.dropOff}</Text>
               </View>
+              <RideEstimates ride={ride} driverPosition={driverPosition} />
               <View style={styles.queueActions}>
                 <TouchableOpacity
                   style={styles.completeButton}

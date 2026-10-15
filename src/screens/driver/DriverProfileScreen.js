@@ -35,6 +35,7 @@ const DriverProfileScreen = () => {
   const [carMake, setCarMake] = useState('');
   const [carModel, setCarModel] = useState('');
   const [carColor, setCarColor] = useState('');
+  const [seats, setSeats] = useState('');
 
   const { data, loading, refetch } = useQuery(GET_SINGLE_DRIVER, {
     variables: { id: userId },
@@ -53,6 +54,7 @@ const DriverProfileScreen = () => {
       setCarMake(driver.carMake || '');
       setCarModel(driver.carModel || '');
       setCarColor(driver.carColor || '');
+      setSeats(driver.seats != null ? String(driver.seats) : '');
     }
   }, [driver]);
 
@@ -70,6 +72,8 @@ const DriverProfileScreen = () => {
           carMake: carMake.trim() || null,
           carModel: carModel.trim() || null,
           carColor: carColor.trim() || null,
+          // Server validates 1–8; leave it out when blank.
+          ...(seats.trim() ? { seats: parseInt(seats, 10) } : {}),
         },
       });
 
@@ -191,12 +195,29 @@ const DriverProfileScreen = () => {
             )}
           </View>
 
-          <View style={[styles.fieldRow, { borderBottomWidth: 0 }]}>
+          <View style={styles.fieldRow}>
             <Text style={styles.fieldLabel}>Color</Text>
             {editing ? (
               <TextInput style={styles.fieldInput} value={carColor} onChangeText={setCarColor} />
             ) : (
               <Text style={styles.fieldValue}>{driver?.carColor || '—'}</Text>
+            )}
+          </View>
+
+          {/* Free passenger seats — riders see this when choosing a driver. */}
+          <View style={[styles.fieldRow, { borderBottomWidth: 0 }]}>
+            <Text style={styles.fieldLabel}>Free Seats</Text>
+            {editing ? (
+              <TextInput
+                style={styles.fieldInput}
+                value={seats}
+                onChangeText={(t) => setSeats(t.replace(/\D/g, '').slice(0, 1))}
+                keyboardType="number-pad"
+                maxLength={1}
+                placeholder="4"
+              />
+            ) : (
+              <Text style={styles.fieldValue}>{driver?.seats ?? '—'}</Text>
             )}
           </View>
         </View>
@@ -257,6 +278,7 @@ const DriverProfileScreen = () => {
                 setCarMake(driver.carMake || '');
                 setCarModel(driver.carModel || '');
                 setCarColor(driver.carColor || '');
+                setSeats(driver.seats != null ? String(driver.seats) : '');
               }
             }}
           >

@@ -199,6 +199,7 @@ export const UPDATE_DRIVER = gql`
     $riderQueue: Int
     $driverNextAvailableAt: Long
     $profilePicture: String
+    $seats: Int
   ) {
     updateDriver(
       id: $id
@@ -214,6 +215,7 @@ export const UPDATE_DRIVER = gql`
       riderQueue: $riderQueue
       driverNextAvailableAt: $driverNextAvailableAt
       profilePicture: $profilePicture
+      seats: $seats
     ) {
       id
       email
@@ -228,6 +230,7 @@ export const UPDATE_DRIVER = gql`
       riderQueue
       driverNextAvailableAt
       profilePicture
+      seats
       createdAt
       updatedAt
     }
@@ -411,6 +414,18 @@ export const FORGOT_PASSWORD_DRIVER = gql`
   mutation ForgotPasswordDriver($email: EmailAddress!) {
     forgotPasswordDriver(email: $email) {
       message
+    }
+  }
+`;
+
+// Driver's live position while on duty (foreground only). Riders with an
+// active ride with this driver receive it via driverLocationUpdated.
+export const UPDATE_DRIVER_LOCATION = gql`
+  mutation UpdateDriverLocation($id: ID!, $latitude: Float!, $longitude: Float!) {
+    updateDriverLocation(id: $id, latitude: $latitude, longitude: $longitude) {
+      id
+      latitude
+      longitude
     }
   }
 `;

@@ -20,6 +20,7 @@ import OptionSelector from '../../components/shared/OptionSelector';
 import PlacesAutocompleteInput from '../../components/shared/PlacesAutocompleteInput';
 import RouteMap from '../../components/shared/RouteMap';
 import { geocodeAddress } from '../../utils/geocodeAddress';
+import { getCurrentAddress } from '../../utils/currentLocation';
 
 const PASSENGER_OPTIONS = [
   { label: '1', value: 1 },
@@ -34,6 +35,14 @@ const PICKUP_TIME_OPTIONS = [
   { label: '30 min', value: '30 minutes' },
   { label: '45 min', value: '45 minutes' },
   { label: '1 hour', value: '1 hour' },
+];
+
+// Quick tip amounts; the field below still takes a custom number.
+const TIP_OPTIONS = [
+  { label: 'None', value: 0 },
+  { label: '$2', value: 2 },
+  { label: '$5', value: 5 },
+  { label: '$10', value: 10 },
 ];
 
 const FindRideScreen = ({ navigation, route }) => {
@@ -64,6 +73,7 @@ const FindRideScreen = ({ navigation, route }) => {
   );
   const [bidAmount, setBidAmount] = useState(prefill.bidAmount ? String(prefill.bidAmount) : '');
   const [showBid, setShowBid] = useState(!!prefill.bidAmount);
+  const [locating, setLocating] = useState(false);
   const [errors, setErrors] = useState({});
 
   // Any free-text change to the address clears the stored coords —
@@ -77,6 +87,24 @@ const FindRideScreen = ({ navigation, route }) => {
   const handleDropOffText = (text) => {
     setDropOff(text);
     setDropOffCoords(null);
+  };
+
+  // "Use my location": pickup = where the phone is right now, as a street
+  // address plus exact coordinates (so the driver gets a precise pin).
+  const handleUseMyLocation = async () => {
+    setLocating(true);
+    setErrors((e) => ({ ...e, pickUp: undefined }));
+    try {
+      const result = await getCurrentAddress();
+      if (result.error) {
+        setErrors((e) => ({ ...e, pickUp: result.error }));
+        return;
+      }
+      setPickUp(result.address);
+      setPickUpCoords({ lat: result.lat, lng: result.lng });
+    } finally {
+      setLocating(false);
+    }
   };
 
   // Quick-pick of a saved Home/Work address. We immediately set the text
@@ -284,6 +312,16 @@ const FindRideScreen = ({ navigation, route }) => {
               dotColor={colors.rider.light}
               hasError={!!errors.pickUp}
             />
+            <TouchableOpacity
+              style={styles.locateButton}
+              onPress={handleUseMyLocation}
+              disabled={locating}
+            >
+              <Ionicons name="locate" size={16} color={colors.rider.dark} />
+              <Text style={styles.locateText}>
+                {locating ? 'Finding you…' : 'Use my current location'}
+              </Text>
+            </TouchableOpacity>
             {renderAddressQuickPicks(handlePickUpQuickPick)}
             {errors.pickUp && <Text style={styles.errorText}>{errors.pickUp}</Text>}
           </View>
@@ -332,13 +370,18 @@ const FindRideScreen = ({ navigation, route }) => {
             />
             <Text style={styles.bidToggleText}>
               {bidAmount && parseInt(bidAmount) > 0
-                ? `$${bidAmount} Bid`
-                : 'Add a Bid (Optional)'}
+                ? `$${bidAmount} tip`
+                : 'Add a tip (optional)'}
             </Text>
           </TouchableOpacity>
 
           {showBid && (
             <View style={styles.bidSection}>
+              <OptionSelector
+                options={TIP_OPTIONS}
+                selected={parseInt(bidAmount) || 0}
+                onSelect={(value) => setBidAmount(value ? String(value) : '')}
+              />
               <View style={styles.bidInputRow}>
                 <Text style={styles.bidDollar}>$</Text>
                 <TextInput
@@ -354,7 +397,10 @@ const FindRideScreen = ({ navigation, route }) => {
                   maxLength={3}
                 />
               </View>
-              <Text style={styles.bidHint}>Tip: Adding a bid can help get your ride accepted faster</Text>
+              <Text style={styles.bidHint}>
+                Optional. Drivers see your tip on the request and may pick you up sooner.
+                It's settled with the driver, outside Arryde.
+              </Text>
             </View>
           )}
 
@@ -483,6 +529,24 @@ const styles = StyleSheet.create({
   },
   mapPreviewWrap: {
     marginBottom: 20,
+  },
+  locateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.rider.light + '15',
+    borderWidth: 1,
+    borderColor: colors.rider.light + '40',
+  },
+  locateText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.rider.dark,
   },
   bidToggle: {
     flexDirection: 'row',

@@ -17,6 +17,7 @@ import { secondsToTimeString } from '../../utils/formatting';
 
 const ChooseDriverScreen = ({ navigation, route }) => {
   const { rideData, prefillDriverIds = [] } = route.params;
+  const passengers = rideData?.passengers || 1;
 
   const userId = useUserStore((state) => state.userId);
   const [selectedDriverIds, setSelectedDriverIds] = useState(prefillDriverIds);
@@ -118,6 +119,9 @@ const ChooseDriverScreen = ({ navigation, route }) => {
               {favoriteDrivers.map((driver) => {
                 const isSelected = selectedDriverIds.includes(driver.id);
                 const isOnDuty = driver.isOnDuty;
+                // Not enough free seats for this party — shown, not pickable.
+                const tooSmall = driver.seats != null && passengers > driver.seats;
+                const selectable = isOnDuty && !tooSmall;
 
                 return (
                   <TouchableOpacity
@@ -125,10 +129,10 @@ const ChooseDriverScreen = ({ navigation, route }) => {
                     style={[
                       styles.driverCard,
                       isSelected && styles.driverCardSelected,
-                      !isOnDuty && styles.driverCardDisabled,
+                      !selectable && styles.driverCardDisabled,
                     ]}
-                    onPress={() => isOnDuty && toggleDriver(driver.id)}
-                    disabled={!isOnDuty}
+                    onPress={() => selectable && toggleDriver(driver.id)}
+                    disabled={!selectable}
                   >
                     <View style={styles.driverRow}>
                       <View style={[styles.driverAvatar, { backgroundColor: colors.driver.light + '20' }]}>
@@ -145,6 +149,12 @@ const ChooseDriverScreen = ({ navigation, route }) => {
                         </View>
                         {isOnDuty ? (
                           <View style={styles.driverStats}>
+                            <Text style={[styles.driverMeta, tooSmall && styles.tooSmallText]}>
+                              {tooSmall
+                                ? `Only ${driver.seats} seat${driver.seats === 1 ? '' : 's'}`
+                                : `Seats: ${driver.seats ?? '—'}`}
+                            </Text>
+                            <Text style={styles.driverMetaDivider}>|</Text>
                             <Text style={styles.driverMeta}>
                               Queue: {driver.riderQueue || 0}
                             </Text>
@@ -189,6 +199,10 @@ const ChooseDriverScreen = ({ navigation, route }) => {
 };
 
 const styles = StyleSheet.create({
+  tooSmallText: {
+    color: colors.error.light,
+    fontWeight: '600',
+  },
   container: {
     flex: 1,
     backgroundColor: colors.rider.dark,

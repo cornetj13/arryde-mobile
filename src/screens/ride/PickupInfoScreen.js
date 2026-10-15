@@ -33,6 +33,8 @@ const PickupInfoScreen = ({ navigation, route }) => {
 
   const [driverQueue, setDriverQueue] = useState(0);
   const [driverAvailableAt, setDriverAvailableAt] = useState(null);
+  // 1 = you're next. Comes from the ride itself (ordered by acceptance).
+  const [queuePosition, setQueuePosition] = useState(ride?.queuePosition ?? null);
 
   const [updateRideStatus, { loading: cancelLoading }] = useMutation(UPDATE_RIDE_STATUS);
   const [resetRiderFlow] = useMutation(RESET_RIDER_RIDE_FLOW_STATUS);
@@ -48,6 +50,7 @@ const PickupInfoScreen = ({ navigation, route }) => {
       const { data } = await fetchRide({ variables: { id: ride.id } });
       const current = data?.getRide;
       if (!current) return;
+      setQueuePosition(current.queuePosition ?? null);
 
       if (current.isCompleted) {
         navigation.reset({
@@ -115,6 +118,8 @@ const PickupInfoScreen = ({ navigation, route }) => {
       if (update && String(update.id) === String(ride?.driverId)) {
         setDriverQueue(update.riderQueue);
         setDriverAvailableAt(update.driverNextAvailableAt);
+        // Someone ahead finished or joined — re-read our place in line.
+        syncRideStatus();
       }
     },
   });
@@ -242,8 +247,14 @@ const PickupInfoScreen = ({ navigation, route }) => {
         {/* Queue & Availability */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{driverQueue}</Text>
-            <Text style={styles.statLabel}>Riders in Queue</Text>
+            <Text style={styles.statValue}>
+              {queuePosition == null
+                ? '—'
+                : queuePosition === 1
+                  ? "You're next"
+                  : `${queuePosition - 1} ahead`}
+            </Text>
+            <Text style={styles.statLabel}>Your Place in Line</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{getAvailabilityText()}</Text>

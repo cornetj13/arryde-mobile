@@ -61,6 +61,15 @@ module.exports = () => ({
       // bundled config and falls back to silent failure. No props needed for
       // the default (FCM via Expo's push service) configuration.
       'expo-notifications',
+      // Foreground location only: "use my current location" for pickups and
+      // the driver's distance-to-pickup estimates. No background tracking.
+      [
+        'expo-location',
+        {
+          locationWhenInUsePermission:
+            'Arryde uses your location to fill in your pickup spot and to show drivers how far away a pickup is.',
+        },
+      ],
     ],
     extra: {
       eas: {
